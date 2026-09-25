@@ -1,0 +1,91 @@
+name: modbus-monitor
+
+x-server-environment: &server-environment
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: 5432
+  POSTGRES_DB: ${POSTGRES_DB:-modbus_monitor}
+  POSTGRES_USER: ${POSTGRES_USER:-modbus_monitor}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:5173","http://127.0.0.1:5173"]}
+  WORKER_HEARTBEAT_SECONDS: ${WORKER_HEARTBEAT_SECONDS:-10}
+  WORKER_CONFIG_REFRESH_SECONDS: ${WORKER_CONFIG_REFRESH_SECONDS:-2}
+  SIMULATOR_ENABLED: ${SIMULATOR_ENABLED:-false}
+  MODBUS_WRITES_ENABLED: ${MODBUS_WRITES_ENABLED:-false}
+  COMMAND_MAX_ATTEMPTS: ${COMMAND_MAX_ATTEMPTS:-3}
+  COMMAND_MAX_AGE_SECONDS: ${COMMAND_MAX_AGE_SECONDS:-60}
+  COMMAND_RETRY_SECONDS: ${COMMAND_RETRY_SECONDS:-1}
+  TELEMETRY_SOURCE: ${TELEMETRY_SOURCE:-}
+  MODBUS_BACKOFF_INITIAL_SECONDS: ${MODBUS_BACKOFF_INITIAL_SECONDS:-1}
+  MODBUS_BACKOFF_MAX_SECONDS: ${MODBUS_BACKOFF_MAX_SECONDS:-30}
+  WORKER_MAX_PARALLEL_CONNECTIONS: ${WORKER_MAX_PARALLEL_CONNECTIONS:-32}
+  SIMULATOR_FAILURE_PROBABILITY: ${SIMULATOR_FAILURE_PROBABILITY:-0}
+  STALE_MULTIPLIER: ${STALE_MULTIPLIER:-3}
+  STALE_CHECK_SECONDS: ${STALE_CHECK_SECONDS:-1}
+  HISTORY_CLEANUP_SECONDS: ${HISTORY_CLEANUP_SECONDS:-3600}
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-modbus_monitor}
+      POSTGRES_USER: ${POSTGRES_USER:-modbus_monitor}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  api:
+    build: ./server
+    environment: *server-environment
+    command: ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000"]
+    ports:
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health/db', timeout=8)"]
+      interval: 10s
+      timeout: 9s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  worker:
+    build: ./server
+    environment: *server-environment
+    command: ["python", "-m", "app.worker"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    stop_grace_period: 15s
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    environment:
+      API_PROXY_TARGET: http://api:8000
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-5173}:5173"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5173').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

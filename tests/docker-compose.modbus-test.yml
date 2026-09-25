@@ -1,0 +1,18 @@
+# Optional test fixture only. Use a separate Compose project, never production configuration.
+services:
+  modbus-test:
+    image: modbus-monitor-api
+    command: ["python", "/tests/modbus_tcp_server.py", "--host", "0.0.0.0", "--port", "5020"]
+    volumes:
+      - ./tests:/tests:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1',5020),2).close()"]
+      interval: 2s
+      timeout: 3s
+      retries: 10
+  api:
+    image: modbus-monitor-api
+  worker:
+    image: modbus-monitor-worker
+  frontend:
+    image: modbus-monitor-frontend

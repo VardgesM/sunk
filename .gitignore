@@ -1,0 +1,13 @@
+.env
+compose.rtu.local.yml
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+node_modules/
+dist/
+*.tsbuildinfo
+.coverage
+.local/

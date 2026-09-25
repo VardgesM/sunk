@@ -1,0 +1,190 @@
+# PostgreSQL configuration model
+
+Configuration uses four relational tables; current values and Phase 4 history use separate tables.
+PostgreSQL is the sole runtime store; there are no
+JSON configuration blobs or seeded devices, registers, ports, or sensors. All IDs are integer
+primary keys (history uses BIGINT). Configuration tables have non-null `created_at` and `updated_at` timestamptz columns with
+database creation defaults. API updates set `updated_at` in UTC; responses serialize UTC offsets.
+Names are nonblank and at most 200 characters. Descriptions are optional (API limit 10,000 characters).
+
+```mermaid
+erDiagram
+    locations o|--o{ locations : parent
+    locations o|--o{ devices : contains
+    connections ||--o{ devices : connects
+    devices ||--o{ tags : defines
+    tags ||--o| tag_current_values : latest
+    tags ||--o{ tag_history : samples
+```
+
+A Device references exactly one Connection and optionally one Location. A Tag references exactly
+one Device. A Location may reference another Location as its parent. Names need not be unique;
+different branches/devices can legitimately share display names.
+
+## Tables
+
+| Table | Configuration columns (in addition to ID and timestamps) |
+| --- | --- |
+| `locations` | name, nullable parent_id, nullable description, sort_order (default 0) |
+| `connections` | name, protocol, enabled, nullable serial_port/baud_rate/parity/stop_bits/data_bits, nullable host/port, timeout_ms |
+| `devices` | name, connection_id, nullable location_id, slave_id, enabled, nullable description |
+| `tags` | name, unique key, device_id, register_type, address, data_type, byte_order, word_order, scale, offset, nullable unit, poll_interval_ms, writable, history_enabled, enabled, nullable min_value/max_value/description |
+
+Connection protocol is `modbus_rtu` or `modbus_tcp`. Database checks require the complete matching
+transport fields and prohibit fields from the other transport. TCP port 502 is an API/UI default;
+the shared nullable column has no unconditional SQL default because RTU must store NULL there.
+Enabled defaults to true and timeout_ms to 1000. Serial fields have no implicit database defaults.
+
+Device slave IDs are 1–247, with a unique `(connection_id, slave_id)` constraint. Both transport
+types use this conservative unicast scope. Special TCP identifiers and broadcast are not supported yet.
+
+Tag keys are globally unique, 1–64 characters, matching `^[a-z][a-z0-9_]{0,63}$` (lowercase ASCII
+letter first, then lowercase letters/digits/underscores). Register types, numeric data types, and
+ordering are constrained to the values documented in [Modbus](modbus.md). Tags default to scale 1,
+offset 0, big byte/word order, poll_interval_ms 1000, writable false, history_enabled false, enabled true.
+Addresses are **zero-based offsets**, never vendor reference numbers. Address plus encoded register
+width cannot exceed 65536. Discrete inputs and input registers cannot be writable. Boolean register
+objects and numeric register encodings cannot be mixed. Scale, offset and limits must be finite;
+minimum cannot exceed maximum. `unit` is at most 50 characters.
+
+## Integrity and deletion
+
+Every foreign key uses `ON DELETE RESTRICT`. A location with children/devices, a connection with
+devices, or a device with tags cannot be deleted. The API returns 409 and the UI preserves the row.
+Explicitly move or delete dependent records first. Missing references on create/update return 422.
+Duplicate tag keys and duplicate connection/slave pairs return 409, backed by database uniqueness.
+
+The database prevents direct self-parenting. The API also rejects longer location cycles, using a
+transaction-scoped table lock to serialize hierarchy mutations before ancestor traversal. Direct SQL
+tree editing is not a supported configuration path. PATCH distinguishes omitted fields from explicit
+null: nullable fields may be cleared, while null in required fields is rejected after merging the patch.
+
+Indexes cover all foreign keys, tag name, register type, and enabled state. The unique tag key
+constraint supplies its lookup index. Case-insensitive name/key substring search is escaped so `%`
+and `_` in user input are literal. Substring search can scan at larger scales; no speculative trigram
+extension is introduced. List APIs have bounded pagination (default 100, maximum 500) and stable ordering.
+
+## Current values (Phase 3)
+
+`tag_current_values.tag_id` is both primary key and restrictive foreign key to `tags.id`: at most one
+row per tag. Upserts replace latest state, never append historical samples.
+
+- `value_numeric` (PostgreSQL NUMERIC), `value_boolean`, `value_text`: at most one populated field.
+- `raw_value`: optional text representation of the decoded pre-scaling source value.
+- `quality`: GOOD, STALE, BAD, COMM_ERROR, DISABLED.
+- `source_timestamp`: last successful reading time; failures do not advance it.
+- `updated_at`: UTC time of the latest state change, including quality-only transitions.
+- `error`: diagnostic, cleared by success; `revision`: atomically incremented positive per-tag counter.
+
+GOOD requires a typed value, source timestamp and no error. Other states may have no sample yet or
+preserve the previous successful value. Finite numbers and a single typed field are database-enforced.
+The primary key handles lookup; a quality index supports maintenance/filtering. NUMERIC retains large
+integers/decimals. JSON `value_numeric` stays numeric, with `value_numeric_exact` as a precision companion
+for browser display beyond the IEEE-754 safe integer range. PostgreSQL tests verify uint64 precision.
+
+Success replaces value/raw/source time and sets GOOD. A source communication failure preserves these
+fields and sets COMM_ERROR; invalid source/configuration sets BAD. Disabled tags/devices/connections
+become DISABLED without acquisition. Re-enabling awaits a fresh sample. Encoding, address, scale or
+limit edits invalidate existing values until recollected. Never-sampled enabled tags may have no row:
+snapshots return null quality/value and revision 0, shown as "Awaiting value".
+
+Tag deletion explicitly removes its derived latest row in the same transaction, then the tag, and
+publishes an invalidation. This is not cascading child-configuration deletion; existing restrictions
+remain in force. Quality transitions share the same upsert/notification service as telemetry updates.
+
+## Historical values (Phase 4)
+
+`tag_history` stores BIGINT id, restrictive tag_id FK, nullable NUMERIC value_numeric / BOOLEAN
+value_boolean / TEXT value_text, quality, nullable source_timestamp, recorded_at (UTC timestamptz),
+and nullable raw_value. GOOD has exactly one typed field and an acquisition timestamp; other qualities
+must have no value fields. Numeric values must be finite. Indexes cover tag_id, recorded_at, and
+(tag_id, recorded_at, id), supporting time filtering, retention and deterministic latest-row lookup.
+
+Tags add history_mode (default every_sample), nullable history_interval_ms, nullable
+history_change_threshold, and nullable history_retention_days. Existing history_enabled remains false
+by default. Validity constraints enforce modes, positive interval/retention, finite non-negative
+threshold, interval >= poll interval for fixed_interval, and a threshold for numeric on_change.
+These are validated even when history is disabled, so enabling a saved policy cannot activate an
+invalid configuration. Irrelevant interval/threshold values may remain saved but are ignored by policy.
+
+A tag with retained history returns HTTP 409 on deletion; its current row remains intact. Disable it
+and configure retention, or manage deliberate archival/removal through a future feature. No history
+purge API or cascading deletion is introduced. Changing encoding or units does not reinterpret older
+rows; response metadata describes current configuration. Use a new tag when a measurement's meaning changes.
+
+See [history policy, queries, and retention](history.md).
+
+## Migration revisions
+
+- `0001_foundation`: unchanged initial migration history.
+- `0002_configuration`: creates these four tables, checks, foreign keys, uniqueness constraints and
+  indexes. Downgrade drops them in dependency order and destroys their configuration data.
+- `0003_current_values`: adds latest typed values, quality/revision checks and quality index;
+  downgrade removes current state only. Existing migrations are unchanged.
+- `0004_history`: creates history with indexes/checks and adds Tag policy fields. Existing enabled
+  history flags begin every-sample storage after upgrade. Downgrade removes history and policy fields,
+  preserving current values and the original history_enabled flag.
+
+Models subclass `app.db.base.Base` and are exported from `app.models` for Alembic discovery. Never
+use `create_all` at application startup. Run migrations from the repository root so `.env` is loaded.
+The async online path uses `connection.run_sync`; offline upgrade/downgrade SQL is supported.
+
+Fast CRUD tests use an isolated SQLite database with foreign keys enabled. SQLite does not validate
+PostgreSQL regex/finite-number checks or lock semantics. The opt-in `tests/test_postgres.py` creates a
+randomly named schema, applies real migrations, compares ORM metadata, exercises CRUD/constraints and
+concurrent hierarchy updates, and tests downgrade/replay. It drops only its own test schema. See README
+for `TEST_DATABASE_URL`; a skipped test is not evidence of PostgreSQL integration success.
+
+## Planned entities (not implemented)
+
+| Entity | Planned purpose |
+| --- | --- |
+| dashboards | User-managed definitions and ownership/access metadata. |
+| dashboard_widgets | Stored widget types, options and layout. |
+| widget_tag_bindings | Widget input to tag bindings. |
+
+| alarm_rules | Conditions, thresholds, delays and severity. |
+| alarm_events | Activation, clear and acknowledgment lifecycle. |
+| users | Identities, permissions and account lifecycle. |
+| audit_log | Actor, action, target, timestamp and changes/results, including device writes. |
+
+Current and historical values remain separate concepts. Future tag values include GOOD, STALE, BAD,
+or COMM_ERROR quality; missing values must not be represented as good zeroes. Configuration flags
+are not substitutes for runtime values. Sensitive transport data must not be copied into audit logs.
+
+## Modbus runtime and provenance (Phase 5)
+
+Revision `0005_modbus_runtime` adds nullable constrained `source` to current/history rows:
+`simulator`, `modbus_rtu`, or `modbus_tcp`. Existing rows stay NULL (unknown). Failed reads retain the
+previous current value's source; value-free history markers have no source. Mixed-source SQL buckets
+return NULL rather than asserting a single origin.
+
+`connection_runtime.connection_id` is a restrictive primary-key foreign key, with state, configuration
+version, UTC updated_at/last_success/last_error_at and readable last_error. States are CONNECTED,
+DISCONNECTED, CONNECTING, ERROR, DISABLED. Expiring transport-test request/result fields hold a token,
+configuration version, timestamps, success/message/latency; they cannot encode Modbus commands.
+Connection deletion explicitly removes this derived row in the same transaction; devices still block
+configuration deletion with 409. No persistent Device table is needed for derived availability.
+
+`worker_runtime` has one checked singleton id, source mode, hostname, UTC heartbeat/discovery times,
+serial_ports JSON and discovery_error. The JSON is derived host discovery, not runtime configuration.
+A heartbeat older than 15 seconds is stale. Serial discovery refreshes every 30 seconds.
+Downgrade removes these two derived tables and source columns, preserving prior configuration/history.
+
+## Commands (Phase 6)
+
+`0006_commands` adds `commands` and `worker_runtime.writes_enabled` (default false).
+Command id and unique request UUID identify a durable manual action. A restrictive tag_id FK preserves
+command records on attempted Tag deletion (409). Requested, previous and verified values use paired
+nullable NUMERIC/BOOLEAN columns with exclusivity constraints; requested has exactly one value.
+PostgreSQL constraints reject nonfinite numbers, invalid statuses/sources/modes, negative attempts,
+nonpositive revisions, SUCCESS without a verified value, and inconsistent terminal/completion times.
+
+UTC created/expires/started/completed times, status, source, mode, confirmation, attempts, revision,
+error and Tag/Device/Connection configuration versions capture lifecycle. Indexes cover status+created,
+tag+created and creation time. No JSON value/configuration blobs or runtime entity defaults are used.
+The worker flag is derived process state, not an API-editable configuration switch. Downgrade removes
+command records and the runtime flag; previous migrations remain unchanged.
+
+See [command protocol](commands.md). Source supports manual/automation/system in storage, but this
+phase's API and processor accept manual only. Command records do not claim authenticated attribution.
