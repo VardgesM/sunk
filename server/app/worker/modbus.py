@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from pymodbus.client import AsyncModbusSerialClient, AsyncModbusTcpClient
-from pymodbus.exceptions import ModbusException
+from pymodbus.exceptions import ModbusException, ModbusIOException
 
 from app.core.config import Settings
 from app.services.current_values import Reading
@@ -61,6 +61,7 @@ class ClientState:
     last_error_at: datetime | None = None
     retry_at: float = 0
     failures: int = 0
+    device_failures: dict[int, tuple[int, float]] = field(default_factory=dict)
 
 
 class ConnectionManager:
@@ -157,6 +158,7 @@ class ConnectionManager:
         operation: Callable[[Any], Any] | None = None,
         *,
         timeout_factor: int = 1,
+        device_id: int | None = None,
     ) -> Any:
         entry = self.entries.get(config.id)
         if entry is None or entry.config != config:
@@ -164,9 +166,16 @@ class ConnectionManager:
         async with entry.lock:
             # Tests and reads share the same lock/client, including on RTU buses.
             try:
-                async with asyncio.timeout(config.timeout_ms / 1000 * timeout_factor):
+                _, retry_at = entry.device_failures.get(device_id, (0, 0))
+                if device_id is not None and self.clock() < retry_at:
+                    raise CommunicationError(f"Device {device_id} retry backoff")
+                async with asyncio.timeout(config.timeout_ms / 1000 + 1):
                     await self.connected(entry)
+                # Allow the library timeout to complete before the outer watchdog.
+                async with asyncio.timeout(config.timeout_ms / 1000 * timeout_factor + 1):
                     result = await operation(entry.client) if operation else None
+                if device_id is not None:
+                    entry.device_failures.pop(device_id, None)
                 if operation:
                     entry.last_success = datetime.now(UTC)
                 entry.state, entry.last_error, entry.failures = "CONNECTED", None, 0
@@ -177,6 +186,24 @@ class ConnectionManager:
                 self.close_entry(entry)
                 raise
             except (TimeoutError, OSError, ModbusException) as exc:
+                if (
+                    device_id is not None
+                    and isinstance(exc, ModbusIOException)
+                    and entry.client is not None
+                    and entry.client.connected
+                    and "No response received after" in str(exc)
+                ):
+                    failures = entry.device_failures.get(device_id, (0, 0))[0] + 1
+                    delay = min(
+                        self.settings.modbus_backoff_max_seconds,
+                        self.settings.modbus_backoff_initial_seconds * 2 ** min(failures - 1, 20),
+                    )
+                    entry.device_failures[device_id] = (failures, self.clock() + delay)
+                    logger.warning(
+                        "Device timeout: connection_id=%s slave_id=%s retry_seconds=%s",
+                        config.id, device_id, delay,
+                    )
+                    raise CommunicationError(f"Device {device_id}: timeout / no response") from exc
                 message = (
                     "Modbus timeout / no response"
                     if isinstance(exc, TimeoutError)
@@ -204,7 +231,7 @@ class ModbusSource:
                 tag.address, count=count, device_id=tag.slave_id
             )
 
-        response = await self.manager.execute(tag.transport, operation)
+        response = await self.manager.execute(tag.transport, operation, device_id=tag.slave_id)
         return self.decode_response(tag, response)
 
     @staticmethod

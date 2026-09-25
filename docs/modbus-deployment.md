@@ -132,3 +132,13 @@ reload, server-stop failure and restart recovery, and removes its test volume af
 the browser extra and Edge. It does not change the running development project's source mode.
 RTU parameter mapping/serialization and all decoding permutations are unit-tested; physical serial
 timing, adapter drivers, cable/CRC behavior and actual device register maps still require hardware.
+
+
+## Polling failure isolation
+
+Requests remain serialized per transport. A PyModbus 3.13.1 no-response exception while the
+transport remains connected delays only that slave, using the configured exponential backoff.
+Other slaves continue on the existing client. A closed transport, port error or outer watchdog
+failure still reconnects the transport. Connection opening has its own timeout; response watchdogs
+allow one second beyond the library timeout so normal missing-slave timeouts can finish cleanly.
+Command writes retain their existing no-replay and verification behavior.

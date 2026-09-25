@@ -259,3 +259,51 @@ def test_modes_are_explicit_and_incompatible_settings_rejected() -> None:
     assert Settings(postgres_password="test", simulator_enabled=True).source_mode == "simulator"
     with pytest.raises(ValueError, match="Disable SIMULATOR_ENABLED"):
         Settings(postgres_password="test", simulator_enabled=True, telemetry_source="modbus")
+
+
+@pytest.mark.anyio
+async def test_missing_slave_does_not_close_bus_or_block_other_slave() -> None:
+    from pymodbus.exceptions import ModbusIOException
+
+    client = FakeClient()
+    now = [0.0]
+    manager = ConnectionManager(Settings(postgres_password="test"), lambda _: client, lambda: now[0])
+    config = transport(protocol="modbus_rtu", serial_port="test-bus")
+    manager.configure([config])
+    missing = AsyncMock(side_effect=ModbusIOException(
+        "No response received after 0 retries, continue with next request"
+    ))
+    with pytest.raises(CommunicationError, match="Device 1: timeout"):
+        await manager.execute(config, missing, device_id=1)
+    client.close.assert_not_called()
+    healthy = AsyncMock(return_value=42)
+    assert await manager.execute(config, healthy, device_id=2) == 42
+    with pytest.raises(CommunicationError, match="Device 1 retry backoff"):
+        await manager.execute(config, missing, device_id=1)
+    assert missing.await_count == 1
+    now[0] = 2
+    assert await manager.execute(config, healthy, device_id=1) == 42
+    assert manager.entries[config.id].device_failures == {}
+    manager.close()
+
+
+@pytest.mark.anyio
+async def test_connect_time_does_not_consume_response_timeout() -> None:
+    client = FakeClient()
+    original = client.open
+
+    async def slow_connect():
+        await asyncio.sleep(.03)
+        return await original()
+
+    client.connect = AsyncMock(side_effect=slow_connect)
+    manager = ConnectionManager(Settings(postgres_password="test"), lambda _: client)
+    config = transport(timeout_ms=40)
+    manager.configure([config])
+
+    async def response(_client):
+        await asyncio.sleep(.03)
+        return 123
+
+    assert await manager.execute(config, response, device_id=1) == 123
+    manager.close()
