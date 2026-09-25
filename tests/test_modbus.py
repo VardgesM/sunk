@@ -307,3 +307,69 @@ async def test_connect_time_does_not_consume_response_timeout() -> None:
 
     assert await manager.execute(config, response, device_id=1) == 123
     manager.close()
+
+
+@pytest.mark.anyio
+async def test_grouped_reads_decode_offsets_and_one_wire_request() -> None:
+    from types import SimpleNamespace
+
+    from app.worker.grouping import read_groups
+
+    client = FakeClient()
+    client.read_holding_registers = AsyncMock(return_value=SimpleNamespace(
+        isError=lambda: False, registers=[12, 0xFFFF, 0xFFFE, 0x41C8, 0]
+    ))
+    config = transport()
+    manager = ConnectionManager(Settings(postgres_password="test"), lambda _: client)
+    manager.configure([config])
+    base = replace(base_tag(), transport=config, slave_id=7, device_id=4,
+                   data_type="uint16", address=100)
+    tags = [base, replace(base, id=2, address=101, data_type="int32"),
+            replace(base, id=3, address=103, data_type="float32")]
+    assert read_groups(tags) == [tags]
+    values = await ModbusSource(manager).read_many(tags)
+    assert [values[t.id].value for t in tags] == [Decimal(12), Decimal(-2), Decimal(25)]
+    assert len({values[t.id].source_timestamp for t in tags}) == 1
+    client.read_holding_registers.assert_awaited_once_with(100, count=5, device_id=7)
+    manager.close()
+
+
+def test_group_boundaries_and_protocol_limits() -> None:
+    from app.worker.grouping import read_groups
+
+    base = replace(base_tag(), transport=transport(), data_type="uint16", address=0)
+    contiguous = [replace(base, id=i+1, address=i) for i in range(126)]
+    assert [len(g) for g in read_groups(contiguous)] == [125, 1]
+    for changed in (
+        replace(base, id=2, address=2),
+        replace(base, id=2, address=1, device_id=99),
+        replace(base, id=2, address=1, slave_id=99),
+        replace(base, id=2, address=1, register_type="input_register"),
+        replace(base, id=2, address=1, transport=transport(id=2)),
+    ):
+        assert len(read_groups([base, changed])) == 2
+    bits = [replace(base, id=i+1, address=i, data_type="bool", register_type="coil")
+            for i in range(2001)]
+    assert [len(g) for g in read_groups(bits)] == [2000, 1]
+
+
+@pytest.mark.anyio
+async def test_grouped_bits_and_truncated_response() -> None:
+    from types import SimpleNamespace
+
+    client = FakeClient()
+    client.read_coils = AsyncMock(return_value=SimpleNamespace(
+        isError=lambda: False, bits=[True, False, True, False, False, False, False, False]
+    ))
+    config = transport()
+    manager = ConnectionManager(Settings(postgres_password="test"), lambda _: client)
+    manager.configure([config])
+    base = replace(base_tag(), transport=config, data_type="bool", register_type="coil", address=0)
+    tags = [replace(base, id=i+1, address=i) for i in range(3)]
+    source = ModbusSource(manager)
+    values = await source.read_many(tags)
+    assert [values[t.id].value for t in tags] == [True, False, True]
+    client.read_coils.return_value.bits = [True]
+    values = await source.read_many(tags)
+    assert all(isinstance(v, DecodeError) for v in values.values())
+    manager.close()

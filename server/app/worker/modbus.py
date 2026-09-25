@@ -7,6 +7,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Any
 
 from pymodbus.client import AsyncModbusSerialClient, AsyncModbusTcpClient
@@ -233,6 +234,40 @@ class ModbusSource:
 
         response = await self.manager.execute(tag.transport, operation, device_id=tag.slave_id)
         return self.decode_response(tag, response)
+
+    async def read_many(self, tags: list[PollTag]) -> dict[int, Reading | Exception]:
+        tag = tags[0]
+        bit = tag.register_type in ("coil", "discrete_input")
+        end = max(t.address + (1 if bit else register_count(t.data_type)) for t in tags)
+
+        async def operation(client: Any) -> Any:
+            return await getattr(client, READ_METHODS[tag.register_type])(
+                tag.address, count=end - tag.address, device_id=tag.slave_id
+            )
+
+        try:
+            response = await self.manager.execute(tag.transport, operation, device_id=tag.slave_id)
+            if response is None or not hasattr(response, "isError") or response.isError():
+                raise DecodeError("Invalid or exception Modbus group response; verify register map")
+            payload = getattr(response, "bits" if bit else "registers", None)
+            if not isinstance(payload, list) or len(payload) < end - tag.address:
+                raise DecodeError("Truncated Modbus group response")
+        except (CommunicationError, DecodeError) as exc:
+            return {t.id: exc for t in tags}
+        timestamp = datetime.now(UTC)
+        result: dict[int, Reading | Exception] = {}
+        for t in tags:
+            start = t.address - tag.address
+            width = 1 if bit else register_count(t.data_type)
+            part = payload[start:start + width]
+            try:
+                value = self.decode_response(t, SimpleNamespace(
+                    isError=lambda: False, bits=part, registers=part
+                ))
+                result[t.id] = Reading(value.value, timestamp, value.raw_value, value.source)
+            except DecodeError as exc:
+                result[t.id] = exc
+        return result
 
     @staticmethod
     def decode_response(tag: PollTag, response: Any) -> Reading:

@@ -165,7 +165,7 @@ and [Compose dependency readiness](https://docs.docker.com/compose/how-tos/start
 
 The worker manager owns one async PyModbus client/lock per configured connection. The shared scheduler
 runs at most one read per connection with bounded independent connection concurrency. Configuration
-refresh replaces changed transports and cancels obsolete reads; per-tag reads keep decoding isolated.
+refresh replaces changed transports and cancels obsolete reads; contiguous due tags share reads while per-tag decoding remains isolated.
 A dedicated PostgreSQL advisory session lock prevents two workers from acquiring the same buses.
 Ownership loss cancels collection and closes clients; database recovery retries ownership.
 

@@ -142,3 +142,11 @@ Other slaves continue on the existing client. A closed transport, port error or 
 failure still reconnects the transport. Connection opening has its own timeout; response watchdogs
 allow one second beyond the library timeout so normal missing-slave timeouts can finish cleanly.
 Command writes retain their existing no-replay and verification behavior.
+
+
+Due tags with overlapping or contiguous addresses are read together only when transport,
+device, slave ID and register type match. No unconfigured address gaps are read. Groups are
+bounded to 125 registers or 2000 bits. Each tag is decoded using its own width, byte/word order,
+scale and offset, then persisted independently with the common acquisition timestamp. Tags not
+yet due are not included. Commands still read back their exact target independently under the
+same transport lock. A rejected/truncated block marks the group BAD, rather than inventing values.

@@ -168,7 +168,7 @@ async def test_scheduler_does_not_wait_for_independent_slow_bus(
     stop, entered = asyncio.Event(), asyncio.Event()
     calls = []
 
-    async def collect(_session, _source, tag):
+    async def collect(_session, _source, tag, acquired=None):
         calls.append(tag.id)
         if tag.id == 1:
             entered.set()

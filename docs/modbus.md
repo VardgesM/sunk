@@ -73,9 +73,9 @@ Engineering values use Decimal arithmetic for `raw * scale + offset` exactly onc
 are not clamped to configured min/max: these are not alarms or physical measurement corrections.
 Raw register words and the decoded raw value remain available as diagnostic text.
 
-Per-tag reads are intentional in this phase: at most four registers or one bit per request.
-Grouping is deferred to keep different polling intervals and failure attribution reliable.
-The source/decoder boundary allows later same-device/register-type grouping without frontend changes.
+Due tags on the same device/register type are grouped across contiguous or overlapping addresses,
+without gaps, up to 125 registers or 2000 bits. Each tag retains independent decoding, history and
+poll interval. Invalid group responses mark the affected group BAD. Future tags are never read early.
 
 The scheduler allows one in-flight read per connection, up to 32 independent connections by default.
 The manager also locks each connection, including transport tests. RTU buses never receive concurrent
@@ -86,8 +86,9 @@ Losing that session cancels acquisition and closes clients before retrying owner
 
 Configuration refresh (default 2 seconds) cancels affected reads and replaces clients when transport
 settings change. Disabled connections/devices/tags are not read. Shutdown closes every client.
-Timeouts cover connect/read; PyModbus retries and automatic reconnect are disabled so the manager owns
-bounded exponential reconnect backoff (default 1 to 30 seconds). A slow/unavailable bus does not block
+Opening and response watchdogs have separate budgets; PyModbus retries and automatic reconnect are disabled so the manager owns
+bounded exponential reconnect backoff (default 1 to 30 seconds). A missing slave on an open
+transport receives its own backoff and does not close the bus or suppress other slaves. A slow/unavailable bus does not block
 independent connections. INFO logs cover lifecycle/configuration; successful samples are not logged at INFO.
 
 ## Quality, source and runtime status

@@ -10,7 +10,8 @@ from app.core.config import Settings
 from app.db.session import Database
 from app.models import Connection, Device, Tag, TagCurrentValue
 from app.schemas.telemetry import utc
-from app.services.current_values import upsert_current
+from app.services.current_values import Reading, upsert_current
+from app.worker.grouping import read_groups
 from app.worker.modbus import ModbusSource
 from app.worker.scheduler import PollScheduler
 from app.worker.simulator import SimulatorSource
@@ -91,10 +92,15 @@ async def configuration_is_current(
     )
 
 
-async def collect_one(session: AsyncSession, source: TelemetrySource, tag: PollTag) -> None:
+async def collect_one(
+    session: AsyncSession, source: TelemetrySource, tag: PollTag,
+    acquired: Reading | Exception | None = None,
+) -> None:
     reading, quality, error = None, "GOOD", None
     try:
-        reading = await source.read(tag)
+        if isinstance(acquired, Exception):
+            raise acquired
+        reading = acquired if acquired is not None else await source.read(tag)
         if (tag.data_type == "bool" and not isinstance(reading.value, bool)) or (
             tag.data_type != "bool" and not isinstance(reading.value, Decimal)
         ):
@@ -162,22 +168,28 @@ async def poll_loop(
     scheduler = PollScheduler()
     loop = asyncio.get_running_loop()
     refresh_at = 0.0
-    in_flight: dict[int, tuple[PollTag, asyncio.Task]] = {}
+    in_flight: dict[int, tuple[list[PollTag], asyncio.Task]] = {}
 
-    async def collect(tag: PollTag) -> None:
+    async def collect(group: list[PollTag]) -> None:
         try:
-            async with database.sessions() as session, session.begin():
-                await collect_one(session, source, tag)
+            values = await source.read_many(group) if isinstance(source, ModbusSource) else {}
+            for tag in group:
+                try:
+                    async with database.sessions() as session, session.begin():
+                        await collect_one(session, source, tag, values.get(tag.id))
+                except Exception:
+                    logger.exception("Tag %s current-value transaction failed", tag.id)
         except Exception:
-            logger.exception("Tag %s current-value transaction failed", tag.id)
+            logger.exception("Telemetry group acquisition failed")
 
     try:
         while not stop.is_set():
-            for identifier, (tag, task) in list(in_flight.items()):
+            for identifier, (group, task) in list(in_flight.items()):
                 if task.done():
                     await task
-                    if scheduler.tags.get(tag.id) == tag:
-                        scheduler.completed(tag, loop.time())
+                    for tag in group:
+                        if scheduler.tags.get(tag.id) == tag:
+                            scheduler.completed(tag, loop.time())
                     del in_flight[identifier]
             if loop.time() >= refresh_at:
                 try:
@@ -189,7 +201,8 @@ async def poll_loop(
                         ]
                     new_tags = {tag.id: tag for tag in tags if tag.enabled}
                     obsolete = [
-                        task for tag, task in in_flight.values() if new_tags.get(tag.id) != tag
+                        task for group, task in in_flight.values()
+                        if any(new_tags.get(tag.id) != tag for tag in group)
                     ]
                     for task in obsolete:
                         task.cancel()
@@ -224,7 +237,11 @@ async def poll_loop(
                     )
                 refresh_at = loop.time() + settings.worker_config_refresh_seconds
             if source:
-                for tag in scheduler.due(loop.time(), limit=max(50, len(scheduler.tags))):
+                due = scheduler.due(loop.time(), limit=max(50, len(scheduler.tags)))
+                groups = read_groups(due) if isinstance(source, ModbusSource) else [[t] for t in due]
+                groups.sort(key=lambda group: min(scheduler.next_due[t.id] for t in group))
+                for group in groups:
+                    tag = group[0]
                     if stop.is_set():
                         break
                     connection_id = tag.transport.id if tag.transport else tag.id
@@ -232,7 +249,7 @@ async def poll_loop(
                         connection_id not in in_flight
                         and len(in_flight) < settings.worker_max_parallel_connections
                     ):
-                        in_flight[connection_id] = (tag, asyncio.create_task(collect(tag)))
+                        in_flight[connection_id] = (group, asyncio.create_task(collect(group)))
             try:
                 # In-flight tags remain due until completion; cap wakeups instead of busy-spinning.
                 await asyncio.wait_for(
