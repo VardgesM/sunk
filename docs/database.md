@@ -215,3 +215,14 @@ configuration and retained execution records are never silently cascaded away. S
 
 Downgrade removes these new tables only, in FK-safe order. Previous revisions are unchanged.
 No alarm-event deletion API or retention is implemented; historical events remain available.
+
+
+## Phase 8.1 serial adapter binding
+
+Migration `0009_serial_binding` adds Connection serial_port_mode (default manual), USB VID/PID,
+serial number, hardware ID, manufacturer/product and opt-in serial_probe_enabled. Protocol constraints
+require a static port in Manual or VID/PID with null port in Auto; TCP remains separate. Existing
+records remain unchanged/manual. connection_runtime adds detected_port, detection_status, detected_at,
+detection_error and redetect request/completion IDs. Configuration identity and transient COM remain
+separate; no new infrastructure/tables. Downgrade requires Auto records first converted to Manual
+with explicit ports. Older migrations are not changed.

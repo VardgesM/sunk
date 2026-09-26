@@ -39,7 +39,7 @@ The status chip checks API liveness on load and every 15 seconds; it does not re
 Compose starts `postgres`, `api`, `worker`, and `frontend`. PostgreSQL, API and frontend have health
 checks. Worker health is observable through heartbeat logs; there is no misleading process-only health
 check. The API applies migrations before starting; the worker waits for API/database readiness.
-The API applies migrations through `0008_alarms` on existing databases and fresh volumes.
+The API applies migrations through `0009_serial_binding` on existing databases and fresh volumes.
 Existing tags with history_enabled=true begin storing every sample after upgrade; review their
 policy/retention settings before running high-frequency collection.
 
@@ -299,7 +299,7 @@ Do not run the simulator restart smoke concurrently with tests using the develop
 
 - Backend: 218 passed with PostgreSQL integration enabled (217 passed, 1 skipped without it).
 - Frontend: 32 tests passed; TypeScript, ESLint and production build passed.
-- Ruff, Compose validation, image builds, migrations through `0008_alarms`, PostgreSQL
+- Ruff, Compose validation, image builds, migrations through `0009_serial_binding`, PostgreSQL
   upgrade/downgrade/replay and Alembic metadata comparison passed.
 - Isolated Docker TCP: four read functions, slave addressing, source/status/test APIs, current/history,
   WebSocket/chart rendering, communication failure/recovery and dynamic configuration passed.
@@ -408,3 +408,17 @@ Additional isolated regression: `.venv\Scripts\python.exe tests/compose_alarms_s
 `docker compose build api worker frontend`. No physical I/O or real Telegram in this test.
 
 Phase 8 exact commands, results and integration limits: [verification report](docs/phase8-verification.md).
+
+
+## Phase 8.1: Automatic USB-RS485 binding
+
+Connections -> Modbus RTU now supports **Manual** and **Auto detect**. Select the worker-discovered
+USB adapter once; Auto resolves its current COM/Linux port and recovers when it reappears under a
+new name. Existing connections stay Manual until explicitly changed. Ambiguous adapters are never
+chosen randomly; optional bounded probing reads only configured Tags/slaves, never writes.
+
+See [USB identity, probing, hotplug and deployment](docs/serial-binding.md). Configure
+SERIAL_SCAN_SECONDS=5 and SERIAL_PROBE_BUDGET_SECONDS=10 in the worker environment if needed.
+Migration `0009_serial_binding` adds identity/runtime fields. Upgrade with
+`docker compose up --build -d --wait`; for Windows native RTU keep the Docker worker stopped and
+restart the native worker after API migration. Re-detect subsequently needs no process restart.

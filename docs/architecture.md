@@ -208,3 +208,12 @@ the event; the existing API listener and frontend socket distribute invalidation
 outbox is consumed by a separate bounded HTTP task, so delivery latency never blocks polling or control.
 Non-secret chat destination is relational configuration; the bot token lives only in worker environment.
 See [alarms](alarms.md) for quality, restart, lifecycle and delivery semantics.
+
+
+## Phase 8.1 worker USB binding
+
+SerialBinder is a worker task under the same exclusive lease. It periodically enumerates USB serial
+metadata and resolves Auto Connections; it may run bounded, configured read-only probes. APIs only
+manage identity and diagnostic mailboxes. The existing ConnectionManager uses the resolved port
+for polling/tests/commands; per-physical-port locks also cover temporary probe clients. Other
+connections continue independently. See [serial binding](serial-binding.md).

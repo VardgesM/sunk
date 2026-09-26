@@ -9,6 +9,9 @@ export interface Location extends Entity {
   parent_id: number | null; description: string | null; sort_order: number;
 }
 export interface Connection extends Entity {
+  serial_port_mode?: 'manual' | 'auto'; usb_vid?: number | null; usb_pid?: number | null;
+  usb_serial_number?: string | null; usb_hardware_id?: string | null;
+  usb_manufacturer?: string | null; usb_product?: string | null; serial_probe_enabled?: boolean;
   protocol: Protocol; enabled: boolean; serial_port: string | null;
   baud_rate: number | null; parity: 'N' | 'E' | 'O' | null;
   stop_bits: number | null; data_bits: number | null; host: string | null;

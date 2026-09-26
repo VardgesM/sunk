@@ -3,9 +3,10 @@
 import asyncio
 import logging
 import os
+import re
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
@@ -48,12 +49,20 @@ def create_client(config: Transport) -> Any:
 
 def physical_port(port: str) -> str:
     # Resolves Linux by-id symlinks and normalizes Windows COM case/extended prefixes.
-    return os.path.normcase(os.path.realpath(port.removeprefix("\\\\.\\")))
+    port = port.removeprefix("\\\\.\\")
+    if re.fullmatch(r"COM[0-9]+", port, re.IGNORECASE):
+        return port.upper()
+    return os.path.normcase(os.path.realpath(port))
 
 
 @dataclass
 class ClientState:
     config: Transport
+    resolved_port: str | None = None
+    detection_status: str | None = None
+    detected_at: datetime | None = None
+    detection_error: str | None = None
+    detection_fingerprint: tuple = ()
     client: Any = None
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     state: str = "DISCONNECTED"
@@ -75,6 +84,11 @@ class ConnectionManager:
         self.settings, self.factory, self.clock = settings, factory, clock
         self.entries: dict[int, ClientState] = {}
         self.conflicts: set[int] = set()
+        self.bus_locks: dict[str, asyncio.Lock] = {}
+        self.serial_ports: list[dict] = []
+        self.discovered_at: datetime | None = None
+        self.discovery_error: str | None = None
+        self.probe_tags: list[PollTag] = []
 
     def configure(self, connections: list[Transport]) -> None:
         wanted = {config.id: config for config in connections}
@@ -85,12 +99,20 @@ class ConnectionManager:
         for identifier, config in wanted.items():
             if identifier not in self.entries:
                 self.entries[identifier] = ClientState(
-                    config, state="DISCONNECTED" if config.enabled else "DISABLED"
+                    config,
+                    resolved_port=config.serial_port
+                    if config.serial_port_mode == "manual"
+                    else None,
+                    state="DISCONNECTED" if config.enabled else "DISABLED",
                 )
+        self.check_conflicts()
+
+    def check_conflicts(self) -> None:
         ports: dict[str, list[int]] = {}
-        for config in connections:
-            if config.enabled and config.protocol == "modbus_rtu":
-                ports.setdefault(physical_port(config.serial_port), []).append(config.id)
+        for entry in self.entries.values():
+            config = entry.config
+            if config.enabled and config.protocol == "modbus_rtu" and entry.resolved_port:
+                ports.setdefault(physical_port(entry.resolved_port), []).append(config.id)
         self.conflicts = {
             identifier for group in ports.values() if len(group) > 1 for identifier in group
         }
@@ -139,9 +161,17 @@ class ConnectionManager:
             raise CommunicationError(f"Reconnect backoff: {entry.last_error}")
         if entry.client is not None and entry.client.connected:
             return
+        if entry.config.protocol == "modbus_rtu" and not entry.resolved_port:
+            entry.state = "ERROR"
+            raise CommunicationError(entry.detection_error or "Automatic adapter detection pending")
         entry.state = "CONNECTING"
         if entry.client is None:
-            entry.client = self.factory(entry.config)
+            actual = (
+                replace(entry.config, serial_port=entry.resolved_port)
+                if entry.config.protocol == "modbus_rtu"
+                else entry.config
+            )
+            entry.client = self.factory(actual)
         logger.info(
             "Opening Modbus connection: connection_id=%s protocol=%s",
             entry.config.id,
@@ -152,6 +182,9 @@ class ConnectionManager:
                 "Unable to open transport (connection refused, unavailable host or serial port)"
             )
         entry.state = "CONNECTED"
+
+    def bus_lock(self, port: str) -> asyncio.Lock:
+        return self.bus_locks.setdefault(physical_port(port), asyncio.Lock())
 
     async def execute(
         self,
@@ -165,53 +198,76 @@ class ConnectionManager:
         if entry is None or entry.config != config:
             raise CommunicationError("Transport configuration changed; awaiting refresh")
         async with entry.lock:
-            # Tests and reads share the same lock/client, including on RTU buses.
-            try:
-                _, retry_at = entry.device_failures.get(device_id, (0, 0))
-                if device_id is not None and self.clock() < retry_at:
-                    raise CommunicationError(f"Device {device_id} retry backoff")
-                async with asyncio.timeout(config.timeout_ms / 1000 + 1):
-                    await self.connected(entry)
-                # Allow the library timeout to complete before the outer watchdog.
-                async with asyncio.timeout(config.timeout_ms / 1000 * timeout_factor + 1):
-                    result = await operation(entry.client) if operation else None
-                if device_id is not None:
-                    entry.device_failures.pop(device_id, None)
-                if operation:
-                    entry.last_success = datetime.now(UTC)
-                entry.state, entry.last_error, entry.failures = "CONNECTED", None, 0
-                return result
-            except (CommunicationError, DecodeError):
-                raise
-            except asyncio.CancelledError:
-                self.close_entry(entry)
-                raise
-            except (TimeoutError, OSError, ModbusException) as exc:
-                if (
-                    device_id is not None
-                    and isinstance(exc, ModbusIOException)
-                    and entry.client is not None
-                    and entry.client.connected
-                    and "No response received after" in str(exc)
-                ):
-                    failures = entry.device_failures.get(device_id, (0, 0))[0] + 1
-                    delay = min(
-                        self.settings.modbus_backoff_max_seconds,
-                        self.settings.modbus_backoff_initial_seconds * 2 ** min(failures - 1, 20),
-                    )
-                    entry.device_failures[device_id] = (failures, self.clock() + delay)
-                    logger.warning(
-                        "Device timeout: connection_id=%s slave_id=%s retry_seconds=%s",
-                        config.id, device_id, delay,
-                    )
-                    raise CommunicationError(f"Device {device_id}: timeout / no response") from exc
-                message = (
-                    "Modbus timeout / no response"
-                    if isinstance(exc, TimeoutError)
-                    else f"Modbus communication failure: {str(exc)[:300]}"
+            # Resolution is stable while this lock spans write and verification too.
+            port_lock = (
+                self.bus_lock(entry.resolved_port)
+                if entry.config.protocol == "modbus_rtu" and entry.resolved_port
+                else asyncio.Lock()
+            )
+            async with port_lock:
+                return await self.execute_locked(
+                    entry, config, operation, timeout_factor, device_id
                 )
-                self.failed(entry, message)
-                raise CommunicationError(message) from exc
+
+    async def execute_locked(
+        self,
+        entry: ClientState,
+        config: Transport,
+        operation,
+        timeout_factor: int,
+        device_id: int | None,
+    ):
+        if self.entries.get(config.id) is not entry or entry.config != config:
+            raise CommunicationError("Transport configuration changed; awaiting refresh")
+        # Tests and reads share the same lock/client, including on RTU buses.
+        try:
+            _, retry_at = entry.device_failures.get(device_id, (0, 0))
+            if device_id is not None and self.clock() < retry_at:
+                raise CommunicationError(f"Device {device_id} retry backoff")
+            async with asyncio.timeout(config.timeout_ms / 1000 + 1):
+                await self.connected(entry)
+            # Allow the library timeout to complete before the outer watchdog.
+            async with asyncio.timeout(config.timeout_ms / 1000 * timeout_factor + 1):
+                result = await operation(entry.client) if operation else None
+            if device_id is not None:
+                entry.device_failures.pop(device_id, None)
+            if operation:
+                entry.last_success = datetime.now(UTC)
+            entry.state, entry.last_error, entry.failures = "CONNECTED", None, 0
+            return result
+        except (CommunicationError, DecodeError):
+            raise
+        except asyncio.CancelledError:
+            self.close_entry(entry)
+            raise
+        except (TimeoutError, OSError, ModbusException) as exc:
+            if (
+                device_id is not None
+                and isinstance(exc, ModbusIOException)
+                and entry.client is not None
+                and entry.client.connected
+                and "No response received after" in str(exc)
+            ):
+                failures = entry.device_failures.get(device_id, (0, 0))[0] + 1
+                delay = min(
+                    self.settings.modbus_backoff_max_seconds,
+                    self.settings.modbus_backoff_initial_seconds * 2 ** min(failures - 1, 20),
+                )
+                entry.device_failures[device_id] = (failures, self.clock() + delay)
+                logger.warning(
+                    "Device timeout: connection_id=%s slave_id=%s retry_seconds=%s",
+                    config.id,
+                    device_id,
+                    delay,
+                )
+                raise CommunicationError(f"Device {device_id}: timeout / no response") from exc
+            message = (
+                "Modbus timeout / no response"
+                if isinstance(exc, TimeoutError)
+                else f"Modbus communication failure: {str(exc)[:300]}"
+            )
+            self.failed(entry, message)
+            raise CommunicationError(message) from exc
 
 
 class ModbusSource:
@@ -259,11 +315,11 @@ class ModbusSource:
         for t in tags:
             start = t.address - tag.address
             width = 1 if bit else register_count(t.data_type)
-            part = payload[start:start + width]
+            part = payload[start : start + width]
             try:
-                value = self.decode_response(t, SimpleNamespace(
-                    isError=lambda: False, bits=part, registers=part
-                ))
+                value = self.decode_response(
+                    t, SimpleNamespace(isError=lambda: False, bits=part, registers=part)
+                )
                 result[t.id] = Reading(value.value, timestamp, value.raw_value, value.source)
             except DecodeError as exc:
                 result[t.id] = exc

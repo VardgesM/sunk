@@ -9,6 +9,12 @@ from app.schemas.telemetry import utc
 class PortRead(BaseModel):
     device: str
     description: str
+    vid: int | None = None
+    pid: int | None = None
+    serial_number: str | None = None
+    hwid: str | None = None
+    manufacturer: str | None = None
+    product: str | None = None
 
 
 class SystemRuntime(BaseModel):
@@ -27,6 +33,11 @@ class SerialPortsRead(BaseModel):
 
 
 class ConnectionStatus(BaseModel):
+    detected_port: str | None = None
+    detection_status: str | None = None
+    detected_at: datetime | None = None
+    detection_error: str | None = None
+    redetect_pending: bool = False
     connection_id: int
     state: Literal["CONNECTED", "DISCONNECTED", "CONNECTING", "ERROR", "DISABLED"]
     last_success: datetime | None = None
@@ -34,7 +45,7 @@ class ConnectionStatus(BaseModel):
     last_error_at: datetime | None = None
     updated_at: datetime | None = None
 
-    @field_serializer("last_success", "last_error_at", "updated_at")
+    @field_serializer("last_success", "last_error_at", "updated_at", "detected_at")
     def timestamp(self, value: datetime | None) -> str | None:
         return utc(value).isoformat() if value else None
 

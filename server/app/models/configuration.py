@@ -54,19 +54,28 @@ class Connection(Timestamps, Base):
         CheckConstraint("length(trim(name)) > 0", name="name_not_blank"),
         CheckConstraint("protocol IN ('modbus_rtu', 'modbus_tcp')", name="protocol"),
         CheckConstraint("timeout_ms > 0", name="timeout_positive"),
+        CheckConstraint("serial_port_mode IN ('manual','auto')", name="serial_mode"),
+        CheckConstraint("usb_vid IS NULL OR usb_vid BETWEEN 0 AND 65535", name="usb_vid"),
+        CheckConstraint("usb_pid IS NULL OR usb_pid BETWEEN 0 AND 65535", name="usb_pid"),
+        CheckConstraint(
+            "serial_port_mode = 'auto' OR (usb_vid IS NULL AND usb_pid IS NULL AND usb_serial_number IS NULL AND usb_hardware_id IS NULL AND usb_manufacturer IS NULL AND usb_product IS NULL AND NOT serial_probe_enabled)",
+            name="manual_identity",
+        ),
         CheckConstraint("parity IS NULL OR parity IN ('N', 'E', 'O')", name="parity"),
         CheckConstraint("baud_rate IS NULL OR baud_rate > 0", name="baud_positive"),
         CheckConstraint("stop_bits IS NULL OR stop_bits IN (1, 1.5, 2)", name="stop_bits"),
         CheckConstraint("data_bits IS NULL OR data_bits IN (7, 8)", name="data_bits"),
         CheckConstraint("port IS NULL OR port BETWEEN 1 AND 65535", name="port"),
         CheckConstraint(
-            "(protocol = 'modbus_rtu' AND serial_port IS NOT NULL "
-            "AND length(trim(serial_port)) > 0 AND baud_rate IS NOT NULL "
+            "(protocol = 'modbus_rtu' AND "
+            "((serial_port_mode = 'manual' AND serial_port IS NOT NULL AND length(trim(serial_port)) > 0) "
+            "OR (serial_port_mode = 'auto' AND serial_port IS NULL AND usb_vid IS NOT NULL AND usb_pid IS NOT NULL)) "
+            "AND baud_rate IS NOT NULL "
             "AND parity IS NOT NULL AND stop_bits IS NOT NULL AND data_bits IS NOT NULL "
             "AND host IS NULL AND port IS NULL) OR "
             "(protocol = 'modbus_tcp' AND host IS NOT NULL AND length(trim(host)) > 0 "
             "AND port IS NOT NULL AND serial_port IS NULL AND baud_rate IS NULL "
-            "AND parity IS NULL AND stop_bits IS NULL AND data_bits IS NULL)",
+            "AND parity IS NULL AND stop_bits IS NULL AND data_bits IS NULL AND serial_port_mode = 'manual')",
             name="protocol_fields",
         ),
     )
@@ -75,6 +84,16 @@ class Connection(Timestamps, Base):
     name: Mapped[str] = mapped_column(String(200))
     protocol: Mapped[str] = mapped_column(String(20))
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
+    serial_port_mode: Mapped[str] = mapped_column(
+        String(6), default="manual", server_default="manual"
+    )
+    usb_vid: Mapped[int | None]
+    usb_pid: Mapped[int | None]
+    usb_serial_number: Mapped[str | None] = mapped_column(String(255))
+    usb_hardware_id: Mapped[str | None] = mapped_column(String(512))
+    usb_manufacturer: Mapped[str | None] = mapped_column(String(255))
+    usb_product: Mapped[str | None] = mapped_column(String(255))
+    serial_probe_enabled: Mapped[bool] = mapped_column(default=False, server_default=false())
     serial_port: Mapped[str | None] = mapped_column(String(255))
     baud_rate: Mapped[int | None]
     parity: Mapped[str | None] = mapped_column(String(1))

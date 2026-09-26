@@ -212,6 +212,7 @@ async def poll_loop(
                     }
                     if isinstance(source, ModbusSource):
                         source.manager.configure(connections)
+                        source.manager.probe_tags = [tag for tag in tags if tag.enabled]
                     changed = scheduler.refresh(tags if source else [], loop.time())
                     if source:
                         for identifier in changed:

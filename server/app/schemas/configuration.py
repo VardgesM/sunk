@@ -46,6 +46,26 @@ class LocationPatch(Input):
 
 
 class ConnectionCreate(Input):
+    serial_port_mode: Literal["manual", "auto"] = "manual"
+    usb_vid: Annotated[int, Field(strict=True, ge=0, le=65535)] | None = None
+    usb_pid: Annotated[int, Field(strict=True, ge=0, le=65535)] | None = None
+    usb_serial_number: (
+        Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)]
+        | None
+    ) = None
+    usb_hardware_id: (
+        Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=512)]
+        | None
+    ) = None
+    usb_manufacturer: (
+        Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)]
+        | None
+    ) = None
+    usb_product: (
+        Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)]
+        | None
+    ) = None
+    serial_probe_enabled: bool = False
     name: Name
     protocol: Protocol
     enabled: bool = True
@@ -66,9 +86,32 @@ class ConnectionCreate(Input):
 
     @model_validator(mode="after")
     def validate_transport(self) -> Self:
+        identity = (
+            self.usb_vid,
+            self.usb_pid,
+            self.usb_serial_number,
+            self.usb_hardware_id,
+            self.usb_manufacturer,
+            self.usb_product,
+        )
+        if self.serial_port_mode == "manual" and (
+            any(v is not None for v in identity) or self.serial_probe_enabled
+        ):
+            raise ValueError("Manual mode must not contain USB identity or probing settings")
+        if self.serial_port_mode == "auto":
+            if (
+                self.protocol != "modbus_rtu"
+                or self.serial_port is not None
+                or self.usb_vid is None
+                or self.usb_pid is None
+            ):
+                raise ValueError("Auto RTU requires USB VID/PID and no static serial_port")
         serial = (self.serial_port, self.baud_rate, self.parity, self.stop_bits, self.data_bits)
         if self.protocol == "modbus_rtu":
-            if any(value is None for value in serial):
+            if any(
+                value is None
+                for value in (serial if self.serial_port_mode == "manual" else serial[1:])
+            ):
                 raise ValueError(
                     "RTU requires serial_port, baud_rate, parity, stop_bits and data_bits"
                 )
@@ -95,6 +138,26 @@ class ConnectionCreate(Input):
 
 
 class ConnectionPatch(Input):
+    serial_port_mode: Literal["manual", "auto"] | None = None
+    usb_vid: Annotated[int, Field(strict=True, ge=0, le=65535)] | None = None
+    usb_pid: Annotated[int, Field(strict=True, ge=0, le=65535)] | None = None
+    usb_serial_number: (
+        Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)]
+        | None
+    ) = None
+    usb_hardware_id: (
+        Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=512)]
+        | None
+    ) = None
+    usb_manufacturer: (
+        Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)]
+        | None
+    ) = None
+    usb_product: (
+        Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)]
+        | None
+    ) = None
+    serial_probe_enabled: bool | None = None
     name: Name | None = None
     protocol: Protocol | None = None
     enabled: bool | None = None

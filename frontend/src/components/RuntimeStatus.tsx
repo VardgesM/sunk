@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Chip, Stack, Typography } from '@mui/material';
 import { useRuntime } from '../hooks/useRuntime';
-import { getTest, testConnection, type DeviceStatus, type SystemRuntime, type TestResult, type TransportStatus } from '../api/runtime';
+import { redetectConnection, getTest, testConnection, type DeviceStatus, type SystemRuntime, type TestResult, type TransportStatus } from '../api/runtime';
 
 export function SourceMode() {
   const { data, error } = useRuntime<SystemRuntime>('/system/runtime');
@@ -11,9 +11,19 @@ export function SourceMode() {
   return <Chip label={data.writes_enabled ? 'Modbus — physical writes enabled' : 'Modbus — read only (writes disabled)'} size="small" sx={{ mb: 2 }} />;
 }
 
-export function ConnectionState({ id }: { id: number }) {
+export function ConnectionState({ id, auto = false }: { id: number; auto?: boolean }) {
+  const [detectionMessage, setDetectionMessage] = useState('');
+  const [detecting, setDetecting] = useState(false);
   const { data, error } = useRuntime<TransportStatus>(`/connections/${id}/status`);
   return <Stack spacing={.5}><Chip size="small" label={data?.state ?? 'UNKNOWN'} />
+    {auto && <>
+      <Typography variant="caption">Detected port: {data?.detected_port || 'unavailable'}</Typography>
+      <Typography variant="caption">Detection: {data?.detection_status?.replaceAll('_', ' ') || 'PENDING'}</Typography>
+      {data?.detected_at && <Typography variant="caption">Last detection: {new Date(data.detected_at).toLocaleString()}</Typography>}
+      {data?.detection_error && <Typography variant="caption" color="error">{data.detection_error}</Typography>}
+      <Button disabled={detecting || data?.redetect_pending} onClick={() => { setDetecting(true); void redetectConnection(id).then(() => setDetectionMessage('Re-detect requested')).catch(e => setDetectionMessage(String(e))).finally(() => setDetecting(false)); }}>Re-detect</Button>
+      {detectionMessage && <Typography variant="caption">{detectionMessage}</Typography>}
+    </>}
     <Typography variant="caption">Last communication: {data?.last_success ? new Date(data.last_success).toLocaleString() : 'not yet verified'}</Typography>
     {(error || data?.last_error) && <Typography variant="caption" color="error">{error || data?.last_error}</Typography>}
   </Stack>;

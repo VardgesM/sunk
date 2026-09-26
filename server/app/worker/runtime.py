@@ -19,8 +19,18 @@ from app.worker.sources import CommunicationError, DecodeError
 logger = logging.getLogger(__name__)
 
 
-def discover_ports() -> list[dict[str, str]]:
-    return [{"device": port.device, "description": port.description} for port in comports()]
+def discover_ports() -> list[dict]:
+    return [
+        {
+            "device": port.device,
+            "description": port.description or "Serial adapter",
+            **{
+                name: getattr(port, name, None)
+                for name in ("vid", "pid", "serial_number", "hwid", "manufacturer", "product")
+            },
+        }
+        for port in comports()
+    ]
 
 
 async def test_transport(
@@ -79,7 +89,13 @@ async def runtime_loop(
         while not stop.is_set():
             try:
                 now = datetime.now(UTC)
-                if asyncio.get_running_loop().time() >= discovery_at:
+                if manager is not None:
+                    ports, discovered_at, discovery_error = (
+                        manager.serial_ports,
+                        manager.discovered_at,
+                        manager.discovery_error,
+                    )
+                elif asyncio.get_running_loop().time() >= discovery_at:
                     try:
                         ports = await asyncio.to_thread(discover_ports)
                         discovered_at = datetime.now(UTC)
@@ -121,6 +137,10 @@ async def runtime_loop(
                             ):
                                 entry.state = "DISCONNECTED"
                             fields.update(
+                                detected_port=entry.resolved_port,
+                                detection_status=entry.detection_status,
+                                detected_at=entry.detected_at,
+                                detection_error=entry.detection_error,
                                 state=entry.state,
                                 last_success=entry.last_success,
                                 last_error=entry.last_error,

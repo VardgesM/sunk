@@ -126,3 +126,12 @@ The read-only Phase 5 transport now also serves the command processor under its 
 lock. Physical writes remain off by default. Coils use write_coil; one-word registers use write_register;
 longer numeric values use write_registers. Only the command processor may call them, and every successful
 command requires decoded read-back. See [write safety and encoding](commands.md).
+
+
+## USB automatic binding (Phase 8.1)
+
+Manual COM/path configuration is preserved. Auto RTU stores USB identity in PostgreSQL and resolves
+the transient port in worker runtime. Optional probes use configured read operations only; all RTU
+access shares physical-port and Connection locks. Ambiguous candidates fail closed. Windows native
+worker enumerates Windows ports; Docker only sees mapped Linux devices. No drivers are installed.
+See [matching, confidence, hotplug, Re-detect and limitations](serial-binding.md).

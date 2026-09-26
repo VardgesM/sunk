@@ -200,7 +200,9 @@ async def test_serial_discovery_uses_host_enumeration(monkeypatch: pytest.Monkey
         "app.worker.runtime.comports",
         lambda: [SimpleNamespace(device="detected", description="USB adapter")],
     )
-    assert discover_ports() == [{"device": "detected", "description": "USB adapter"}]
+    ports = discover_ports()
+    assert ports[0]["device"] == "detected" and ports[0]["description"] == "USB adapter"
+    assert ports[0]["vid"] is None and ports[0]["serial_number"] is None
 
 
 async def test_source_switch_marks_history_boundary(api: AsyncClient, database_sessions) -> None:

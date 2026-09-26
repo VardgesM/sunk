@@ -20,6 +20,14 @@ class Transport:
     data_bits: int | None = None
     host: str | None = None
     port: int | None = None
+    serial_port_mode: str = "manual"
+    usb_vid: int | None = None
+    usb_pid: int | None = None
+    usb_serial_number: str | None = None
+    usb_hardware_id: str | None = None
+    usb_manufacturer: str | None = None
+    usb_product: str | None = None
+    serial_probe_enabled: bool = False
 
 
 @dataclass(frozen=True)

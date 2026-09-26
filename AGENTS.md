@@ -50,3 +50,8 @@
 - Secrets such as Telegram bot tokens must never be committed, logged, returned by APIs, or stored in frontend code.
 - Alarm events retain history; invalid telemetry cannot clear a valid open threshold alarm.
 - Telegram is explicitly opt-in; automated tests mock HTTP and must never send real notifications.
+
+- Auto RTU identity belongs in Connection configuration; resolved COM/path belongs in worker runtime.
+- USB discovery/probing is worker-only, read-only, bounded and based solely on configured readable Tags/slaves.
+- Never choose an ambiguous adapter arbitrarily or probe a port reserved by another Connection.
+- Share canonical physical-port locks across detection, polling, tests and command write/read-back.

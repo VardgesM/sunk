@@ -294,6 +294,34 @@ async def test_postgres_migrations_crud_constraints_and_hierarchy(
                 ("connections", connection["id"]),
             ):
                 assert (await api.delete(f"/api/{resource}/{identifier}")).status_code == 204
+            # Auto RTU fields are relational and validated by PostgreSQL, not just Pydantic.
+            from app.models import Connection as ConnectionModel
+
+            auto = await api.post(
+                "/api/connections",
+                json={
+                    "name": "USB test",
+                    "protocol": "modbus_rtu",
+                    "serial_port_mode": "auto",
+                    "usb_vid": 123,
+                    "usb_pid": 456,
+                    "baud_rate": 9600,
+                    "parity": "N",
+                    "stop_bits": 1,
+                    "data_bits": 8,
+                },
+            )
+            assert auto.status_code == 201, auto.text
+            async with sessions() as database:
+                with pytest.raises(IntegrityError):
+                    await database.execute(
+                        update(ConnectionModel)
+                        .where(ConnectionModel.id == auto.json()["id"])
+                        .values(usb_pid=None)
+                    )
+                    await database.commit()
+                await database.rollback()
+            assert (await api.delete(f"/api/connections/{auto.json()['id']}")).status_code == 204
         # Validate reversibility and replay inside the isolated schema.
         async with engine.begin() as connection:
             await connection.run_sync(lambda sync: migrate(sync, "base"))

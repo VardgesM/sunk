@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     telemetry_source: Literal["disabled", "simulator", "modbus"] | None = None
     modbus_backoff_initial_seconds: float = Field(default=1, ge=0.1, le=60)
     modbus_backoff_max_seconds: float = Field(default=30, ge=1, le=300)
+    serial_scan_seconds: float = Field(default=5, ge=1, le=300)
+    serial_probe_budget_seconds: float = Field(default=10, ge=1, le=30)
     worker_max_parallel_connections: int = Field(default=32, ge=1, le=256)
 
     @field_validator("telemetry_source", mode="before")

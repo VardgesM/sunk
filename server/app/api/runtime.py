@@ -66,6 +66,13 @@ async def connection_status(identifier: Identifier, session: Session) -> Connect
     )
     return ConnectionStatus(
         connection_id=identifier,
+        detected_port=row.detected_port if fresh else None,
+        detection_status=row.detection_status if fresh else None,
+        detected_at=row.detected_at if row else None,
+        detection_error=row.detection_error if fresh else None,
+        redetect_pending=bool(
+            row and row.redetect_id and row.redetect_id != row.redetect_completed_id
+        ),
         state="DISABLED" if not config.enabled else row.state if fresh else "DISCONNECTED",
         last_success=row.last_success if row else None,
         last_error=row.last_error
@@ -181,3 +188,32 @@ async def device_status(identifier: Identifier, session: Session) -> DeviceStatu
     else:
         state = "UNKNOWN"
     return DeviceStatus(device_id=identifier, state=state, last_success=max(times, default=None))
+
+
+@router.post("/connections/{identifier}/redetect", status_code=202)
+async def request_redetect(identifier: Identifier, session: Session) -> dict:
+    config = await get_record(session, Connection, identifier, lock=True)
+    worker = await session.get(WorkerRuntime, 1)
+    if not worker_alive(worker):
+        raise HTTPException(503, "Telemetry worker is unavailable")
+    if (
+        worker.mode != "modbus"
+        or not config.enabled
+        or config.protocol != "modbus_rtu"
+        or config.serial_port_mode != "auto"
+    ):
+        raise HTTPException(
+            409, "Re-detect requires an enabled Auto RTU connection and Modbus worker"
+        )
+    row = await session.get(ConnectionRuntime, identifier)
+    if row and row.redetect_id and row.redetect_id != row.redetect_completed_id:
+        return {"request_id": row.redetect_id, "state": "PENDING"}
+    token = str(uuid4())
+    await upsert_runtime(
+        session,
+        ConnectionRuntime,
+        "connection_id",
+        {"connection_id": identifier, "redetect_id": token},
+    )
+    await session.commit()
+    return {"request_id": token, "state": "PENDING"}

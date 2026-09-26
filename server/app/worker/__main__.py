@@ -14,6 +14,7 @@ from app.worker.modbus import ConnectionManager, ModbusSource
 from app.worker.notifications import NotificationSender
 from app.worker.polling import poll_loop
 from app.worker.runtime import runtime_loop
+from app.worker.serial_binding import SerialBinder
 from app.worker.simulator import SimulatorSource
 
 logger = logging.getLogger(__name__)
@@ -58,6 +59,8 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
         asyncio.create_task(AlarmEngine(database, settings).run(stop)),
         asyncio.create_task(NotificationSender(database, settings).run(stop)),
     ]
+    if manager:
+        tasks.append(asyncio.create_task(SerialBinder(database, settings, manager).run(stop)))
     try:
         await asyncio.gather(*tasks)
     finally:

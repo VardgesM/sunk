@@ -40,7 +40,7 @@ describe('configuration management', () => {
     expect(screen.getByLabelText(/^Host/)).toBeInTheDocument();
     await choose(user, 'Protocol', 'modbus_rtu');
     expect(screen.queryByLabelText(/^Host/)).not.toBeInTheDocument();
-    await user.type(screen.getByLabelText(/^Serial port/), 'operator-port');
+    await user.type(screen.getByRole('textbox', { name: /^Serial port/ }), 'operator-port');
     await user.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(create).toHaveBeenCalledWith(expect.objectContaining({
       serial_port: 'operator-port', protocol: 'modbus_rtu', host: null, port: null, baud_rate: 9600,
