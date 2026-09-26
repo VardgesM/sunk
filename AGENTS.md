@@ -14,7 +14,7 @@
 - Use type hints, small modules, explicit error handling, and migrations for schema changes.
 - Never commit credentials or local environment files.
 - Phase 7 adds Automation through persistent, verified commands; physical writes are disabled by default.
-- No schedules, scripts, dashboard editing, authentication, or permissions yet.
+- No schedules, scripts, authentication, or permissions yet.
 - All physical control actions must go through the persistent command pipeline. Only the worker command processor may execute Modbus writes.
 - Verify writes by read-back. Never replay an uncertain physical write or restart-interrupted command.
 - Freeze command mode and configuration versions at enqueue; reject changed targets at execution.
@@ -55,3 +55,6 @@
 - USB discovery/probing is worker-only, read-only, bounded and based solely on configured readable Tags/slaves.
 - Never choose an ambiguous adapter arbitrarily or probe a port reserved by another Connection.
 - Share canonical physical-port locks across detection, polling, tests and command write/read-back.
+
+- Dashboard widgets must use existing system APIs and command infrastructure. They must never directly access Modbus or duplicate Automation/Alarm logic.
+- Dashboard Tag bindings remain relational and restrictive; layout is structured per breakpoint. Physical confirmation cannot be disabled by widget configuration.

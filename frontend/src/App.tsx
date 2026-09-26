@@ -7,6 +7,7 @@ import HealthStatus from './components/HealthStatus';
 import { SourceMode } from './components/RuntimeStatus';
 import PlaceholderPage from './pages/PlaceholderPage';
 
+const DashboardsPage = lazy(() => import('./pages/DashboardsPage'));
 const AlarmsPage = lazy(() => import('./pages/AlarmsPage'));
 const AutomationPage = lazy(() => import('./pages/AutomationPage'));
 const CommandsPage = lazy(() => import('./pages/CommandsPage'));
@@ -57,9 +58,10 @@ export default function App() {
       <Box component="main" sx={{ flexGrow: 1, minWidth: 0, p: { xs: 2, sm: 3, md: 5 } }}>
         <Toolbar />
         <SourceMode />
-        <Suspense fallback={<Typography role="status">Loading page…</Typography>}>
+        <Suspense fallback={<Typography role="status">Loading pageâ€¦</Typography>}>
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/dashboard" element={<DashboardsPage />} />
           <Route path="/locations" element={<LocationsPage />} />
           <Route path="/connections" element={<ConnectionsPage />} />
           <Route path="/devices" element={<DevicesPage />} />
@@ -68,7 +70,7 @@ export default function App() {
           <Route path="/commands" element={<CommandsPage />} />
           <Route path="/tags" element={<TagsPage />} />
           <Route path="/tags/:id" element={<TagDetailsPage key={location.pathname} />} />
-          {['Dashboard', 'Users', 'Settings'].map((page) => <Route key={page} path={`/${page.toLowerCase()}`} element={<PlaceholderPage title={page} />} />)}
+          {['Users', 'Settings'].map((page) => <Route key={page} path={`/${page.toLowerCase()}`} element={<PlaceholderPage title={page} />} />)}
           <Route path="*" element={<Typography component="h1">Page not found</Typography>} />
         </Routes>
         </Suspense>

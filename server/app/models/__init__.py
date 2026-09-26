@@ -10,6 +10,12 @@ from app.models.alarms import (
 from app.models.command import Command
 from app.models.configuration import Connection, Device, Location, Tag
 from app.models.current_value import TagCurrentValue
+from app.models.dashboards import (
+    Dashboard,
+    DashboardWidget,
+    DashboardWidgetLayout,
+    DashboardWidgetTag,
+)
 from app.models.history import TagHistory
 from app.models.runtime import ConnectionRuntime, WorkerRuntime
 
@@ -51,3 +57,6 @@ __all__ += [
     "TelegramDestination",
     "NotificationDelivery",
 ]
+
+
+__all__ += ["Dashboard", "DashboardWidget", "DashboardWidgetTag", "DashboardWidgetLayout"]

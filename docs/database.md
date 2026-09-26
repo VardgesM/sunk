@@ -35,10 +35,10 @@ transport fields and prohibit fields from the other transport. TCP port 502 is a
 the shared nullable column has no unconditional SQL default because RTU must store NULL there.
 Enabled defaults to true and timeout_ms to 1000. Serial fields have no implicit database defaults.
 
-Device slave IDs are 1–247, with a unique `(connection_id, slave_id)` constraint. Both transport
+Device slave IDs are 1Ã¢â‚¬â€œ247, with a unique `(connection_id, slave_id)` constraint. Both transport
 types use this conservative unicast scope. Special TCP identifiers and broadcast are not supported yet.
 
-Tag keys are globally unique, 1–64 characters, matching `^[a-z][a-z0-9_]{0,63}$` (lowercase ASCII
+Tag keys are globally unique, 1Ã¢â‚¬â€œ64 characters, matching `^[a-z][a-z0-9_]{0,63}$` (lowercase ASCII
 letter first, then lowercase letters/digits/underscores). Register types, numeric data types, and
 ordering are constrained to the values documented in [Modbus](modbus.md). Tags default to scale 1,
 offset 0, big byte/word order, poll_interval_ms 1000, writable false, history_enabled false, enabled true.
@@ -139,16 +139,10 @@ for `TEST_DATABASE_URL`; a skipped test is not evidence of PostgreSQL integratio
 
 | Entity | Planned purpose |
 | --- | --- |
-| dashboards | User-managed definitions and ownership/access metadata. |
-| dashboard_widgets | Stored widget types, options and layout. |
-| widget_tag_bindings | Widget input to tag bindings. |
-
-| alarm_rules | Conditions, thresholds, delays and severity. |
-| alarm_events | Activation, clear and acknowledgment lifecycle. |
 | users | Identities, permissions and account lifecycle. |
 | audit_log | Actor, action, target, timestamp and changes/results, including device writes. |
 
-Current and historical values remain separate concepts. Future tag values include GOOD, STALE, BAD,
+Current and historical values remain separate concepts. Tag values include GOOD, STALE, BAD,
 or COMM_ERROR quality; missing values must not be represented as good zeroes. Configuration flags
 are not substitutes for runtime values. Sensitive transport data must not be copied into audit logs.
 
@@ -226,3 +220,7 @@ records remain unchanged/manual. connection_runtime adds detected_port, detectio
 detection_error and redetect request/completion IDs. Configuration identity and transient COM remain
 separate; no new infrastructure/tables. Downgrade requires Auto records first converted to Manual
 with explicit ports. Older migrations are not changed.
+
+## Phase 9 dashboard configuration
+
+Migration `0010_dashboards` adds `dashboards`, `dashboard_widgets`, `dashboard_widget_tags` and `dashboard_widget_layouts`. Slugs are unique; a partial unique index enforces one default. Bindings have restrictive Tag FKs and ordered multi-Tag support. Responsive layout is stored in integer columns per breakpoint, with bounds constraints; only type-specific settings use validated JSON. Dashboard revision detects stale layout saves. Deletion explicitly removes dashboard-owned rows without deleting external entities. See [details and API](dashboards.md).

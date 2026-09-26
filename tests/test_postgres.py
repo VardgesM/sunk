@@ -87,6 +87,35 @@ async def test_postgres_migrations_crud_constraints_and_hierarchy(
             ) as api,
         ):
             assert (await api.get("/api/health/db")).status_code == 200
+            # Default replacement is serialized even when the table starts empty.
+            boards = await asyncio.gather(
+                *[
+                    api.post(
+                        "/api/dashboards", json={"name": name, "slug": name, "is_default": True}
+                    )
+                    for name in ("first", "second")
+                ]
+            )
+            assert all(row.status_code == 201 for row in boards)
+            assert sum(row["is_default"] for row in (await api.get("/api/dashboards")).json()) == 1
+            board_id = boards[0].json()["id"]
+            layouts = [
+                {"breakpoint": b, "x": 0, "y": 0, "w": 1, "h": 6} for b in ("lg", "md", "sm")
+            ]
+            widget_response = await api.post(
+                f"/api/dashboards/{board_id}/widgets",
+                json={
+                    "type": "text",
+                    "title": "Integration label",
+                    "layouts": layouts,
+                    "configuration": {"text": "Stored in PostgreSQL"},
+                },
+            )
+            assert widget_response.status_code == 201, widget_response.text
+            assert (await api.get(f"/api/dashboards/{board_id}")).json()["widgets"][0][
+                "configuration"
+            ]["text"] == "Stored in PostgreSQL"
+            assert (await api.delete(f"/api/dashboards/{board_id}")).status_code == 204
             location = (await api.post("/api/locations", json={"name": "Integration root"})).json()
             other = (await api.post("/api/locations", json={"name": "Integration other"})).json()
             # Competing updates must not be able to create a cycle.

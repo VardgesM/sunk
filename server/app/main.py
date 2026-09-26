@@ -14,6 +14,7 @@ from app.api import (
     commands,
     connections,
     current_values,
+    dashboards,
     devices,
     history,
     live,
@@ -70,6 +71,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(automation.router)
     app.include_router(alarms.router)
     app.include_router(notifications.router)
+    app.include_router(dashboards.router)
     for configuration_router in (locations.router, connections.router, devices.router, tags.router):
         app.include_router(configuration_router)
 

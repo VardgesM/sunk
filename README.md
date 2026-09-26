@@ -1,14 +1,14 @@
 # Modbus Monitor
 
 A configurable industrial monitoring platform. FastAPI and the worker share one Python package;
-React/TypeScript/MUI provides the interface. Phase 8 adds Alarms and optional Telegram notifications alongside Automation, verified commands, RTU/TCP reads, simulator
+React/TypeScript/MUI provides the interface. Phase 9 adds a dynamic Dashboard Builder alongside Alarms, Telegram, Automation, verified commands, RTU/TCP reads, simulator
 telemetry, current values, history and WebSocket charts. Physical writes are disabled by default.
-Authentication and dashboard editing remain deferred.
+Authentication remains deferred.
 
 ## Repository
 
 - `server/app`: API, shared settings/database infrastructure, schemas, and separate worker entry point.
-- `server/alembic`: foundation, configuration, current values, commands and `0007_automation` / `0008_alarms` migrations.
+- `server/alembic`: foundation, configuration, current values, commands and Automation, Alarms, serial binding and `0010_dashboards` migrations.
 - `frontend/src`: existing shell, four configuration pages, API client, health indicator and UI tests.
 - `tests`: health/worker tests, relational CRUD tests, migration checks and opt-in PostgreSQL integration.
 - `docs`: [architecture](docs/architecture.md), [database](docs/database.md), [Modbus boundary](docs/modbus.md).
@@ -141,7 +141,7 @@ dependency-conflict feedback. Tests contain isolated fixtures; no fixtures are s
 
 1. Create Locations and optionally select parent locations.
 2. Create a Connection. Choose TCP (typed host and port) or RTU (manually typed serial port and serial settings).
-3. Create a Device, selecting its Connection, optional Location and unicast slave ID 1–247.
+3. Create a Device, selecting its Connection, optional Location and unicast slave ID 1Ã¢â‚¬â€œ247.
 4. Create Tags for that Device with unique lowercase keys and explicit register type/encoding.
 
 Tag addresses are **zero-based Modbus offsets**. A manual's `40001` notation commonly corresponds
@@ -182,7 +182,7 @@ Each of `/api/locations`, `/api/connections`, `/api/devices`, `/api/tags` suppor
 
 | Method/path | Result |
 | --- | --- |
-| GET collection | 200, array; `limit` (1–500, default 100) and `offset` (>=0) |
+| GET collection | 200, array; `limit` (1Ã¢â‚¬â€œ500, default 100) and `offset` (>=0) |
 | POST collection | 201, created entity |
 | GET `/{id}` | 200 entity or 404 |
 | PATCH `/{id}` | 200 entity; full merged-record validation |
@@ -197,7 +197,7 @@ null; omitted PATCH fields remain unchanged. Protocol changes must clear incompa
 ### Current-value API
 
 - `GET /api/tags/values`: snapshot with `tag_id`, `device_id`, effective `enabled`, and `quality` filters;
-  keyset pagination uses `after_tag_id` and `limit` (1–500).
+  keyset pagination uses `after_tag_id` and `limit` (1Ã¢â‚¬â€œ500).
 - `GET /api/tags/{id}/value`: one tag's latest state, including null state before its first reading.
 - `/api/ws/live`: live events, readiness, heartbeat, and resynchronization messages.
 
@@ -422,3 +422,9 @@ SERIAL_SCAN_SECONDS=5 and SERIAL_PROBE_BUDGET_SECONDS=10 in the worker environme
 Migration `0009_serial_binding` adds identity/runtime fields. Upgrade with
 `docker compose up --build -d --wait`; for Windows native RTU keep the Docker worker stopped and
 restart the native worker after API migration. Re-detect subsequently needs no process restart.
+
+## Phase 9 - Dashboard Builder
+
+Open **Dashboard**, create a dashboard, then **Edit dashboard layout, then Add widget**. Choose Tags dynamically; drag/resize and **Save layout**. Use Rename/settings to select the default dashboard. Value, Gauge, Line Chart, Boolean Status, Switch, Numeric Setpoint, Alarm List and Text are supported. [Dashboard guide](docs/dashboards.md) explains layouts, configuration and control safety.
+
+Apply the new migration using the existing deployment procedure (`alembic -c server/alembic.ini upgrade head` for the native environment; Compose API applies migrations on startup). Rebuild API/frontend images to expose the new UI. In the Windows native-worker deployment keep the Docker worker stopped. No dashboard or physical test configuration is automatically seeded.

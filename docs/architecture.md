@@ -13,14 +13,12 @@ flowchart LR
   Browser[React browser] -->|HTTP /api and WebSocket| API[FastAPI]
   API --> DB[(PostgreSQL)]
   Worker[Python worker] --> DB
-  Worker -->|Read-only RTU / TCP| Devices[Modbus devices]
+  Worker -->|RTU / TCP reads and verified queued writes| Devices[Modbus devices]
 ```
 
 The API provides health checks, configuration CRUD, current-value snapshots, and live WebSockets.
 The separate worker acquires telemetry from the explicitly selected simulator or Modbus source and persists latest values.
-There are no dashboards, authentication or alarm processing. Manual writes now use the persistent
-command pipeline, with physical writes disabled by default. Shell navigation is static;
-dashboard and widget instances will be database records, never source-code configuration.
+Dashboards, Automation and Alarms use existing configuration and telemetry services. Authentication is deferred. All control actions use the persistent command pipeline, with physical writes disabled by default. Shell navigation is static; dashboard and widget instances are database records, never source-code configuration.
 
 ## Configuration flow (Phase 2)
 
@@ -217,3 +215,7 @@ metadata and resolves Auto Connections; it may run bounded, configured read-only
 manage identity and diagnostic mailboxes. The existing ConnectionManager uses the resolved port
 for polling/tests/commands; per-physical-port locks also cover temporary probe clients. Other
 connections continue independently. See [serial binding](serial-binding.md).
+
+## Dynamic dashboards
+
+Phase 9 adds configuration-only Dashboard APIs and a React Grid Layout editor. Relational widget Tag bindings feed the existing shared LiveStore; charts use history REST, alarm lists reuse Alarm APIs/events, and control widgets reuse verified Commands. No worker transport or Automation/Alarm logic is added. See [Dashboard Builder](dashboards.md).

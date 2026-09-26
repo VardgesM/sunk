@@ -8,7 +8,7 @@ import { useCommands } from '../hooks/useCommands';
 import { useRuntime } from '../hooks/useRuntime';
 import { LiveValue } from './LiveValues';
 
-export default function ManualControl({ tag }: { tag: Tag }) {
+export default function ManualControl({ tag, confirmationRequired = false }: { tag: Tag; confirmationRequired?: boolean }) {
   const { data: runtime } = useRuntime<SystemRuntime>('/system/runtime');
   const commands = useCommands(`tag_id=${tag.id}`);
   const [submitted, setSubmitted] = useState<Command>();
@@ -21,7 +21,7 @@ export default function ManualControl({ tag }: { tag: Tag }) {
   const [error, setError] = useState('');
   const pending = useRef<{ value: string | boolean; id: string } | null>(null);
   const physical = runtime?.mode === 'modbus';
-  const available = tag.enabled && runtime?.alive && (runtime.mode === 'simulator' || physical && runtime.writes_enabled);
+  const available = tag.enabled && tag.writable && ['coil', 'holding_register'].includes(tag.register_type) && runtime?.alive && (runtime.mode === 'simulator' || physical && runtime.writes_enabled);
   const boolean = tag.register_type === 'coil';
   async function send() {
     const requested = boolean ? on : value;
@@ -39,13 +39,13 @@ export default function ManualControl({ tag }: { tag: Tag }) {
   return <Stack spacing={2}>
     <Typography variant="h6">Manual control</Typography>
     {!available && <Alert severity="warning">Writes unavailable: physical writes are disabled, configuration is disabled, or the worker is offline.</Alert>}
-    {runtime?.mode === 'simulator' && <Alert severity="info">Simulated control — no physical device write.</Alert>}
+    {runtime?.mode === 'simulator' && <Alert severity="info">Simulated control â€” no physical device write.</Alert>}
     <Typography>Actual: <LiveValue tagId={tag.id} field="value" control /> {tag.unit}</Typography>
     <LiveValue tagId={tag.id} field="quality" />
     {boolean ? <TextField select label="Requested state" value={on ? 'on' : 'off'} onChange={(event) => setOn(event.target.value === 'on')}>
       <MenuItem value="off">OFF</MenuItem><MenuItem value="on">ON</MenuItem>
     </TextField> : <TextField label="Requested value" value={value} onChange={(event) => setValue(event.target.value)} helperText={`Engineering value${tag.unit ? ` (${tag.unit})` : ''}. Actual changes only after a real read-back.`} slotProps={{ htmlInput: { inputMode: 'decimal' } }} />}
-    <Button variant="contained" disabled={!available || busy || activeCommand(latest) || !boolean && !value.trim()} onClick={() => physical ? setConfirm(true) : void send()}>Apply</Button>
+    <Button variant="contained" disabled={!available || busy || activeCommand(latest) || !boolean && !value.trim()} onClick={() => physical || confirmationRequired ? setConfirm(true) : void send()}>Apply</Button>
     {(error || commands.error) && <Alert severity="error">{error || commands.error}</Alert>}
     {latest && <Stack spacing={1}>
       <Typography>Requested: {commandValue(latest.requested_value)}</Typography>
@@ -55,8 +55,8 @@ export default function ManualControl({ tag }: { tag: Tag }) {
       {latest.status === 'QUEUED' && <Button onClick={() => void cancel()}>Cancel queued command</Button>}
     </Stack>}
     <Dialog open={confirm} onClose={() => setConfirm(false)} fullWidth maxWidth="sm">
-      <DialogTitle>Confirm physical write</DialogTitle>
-      <DialogContent>Write {boolean ? on ? 'ON' : 'OFF' : value} {tag.unit} to {tag.name} ({tag.key})? This changes a physical device. Verification failure does not undo the write.</DialogContent>
+      <DialogTitle>{physical ? 'Confirm physical write' : 'Confirm simulated write'}</DialogTitle>
+      <DialogContent>Write {boolean ? on ? 'ON' : 'OFF' : value} {tag.unit} to {tag.name} ({tag.key})? {physical ? 'This changes a physical device. Verification failure does not undo the write.' : 'This changes only the simulated value.'}</DialogContent>
       <DialogActions><Button onClick={() => setConfirm(false)}>Back</Button><Button disabled={!available || busy} onClick={() => void send()}>Confirm write</Button></DialogActions>
     </Dialog>
   </Stack>;
