@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api import (
+    alarms,
     automation,
     commands,
     connections,
@@ -17,6 +18,7 @@ from app.api import (
     history,
     live,
     locations,
+    notifications,
     runtime,
     tags,
 )
@@ -66,6 +68,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(runtime.router)
     app.include_router(commands.router)
     app.include_router(automation.router)
+    app.include_router(alarms.router)
+    app.include_router(notifications.router)
     for configuration_router in (locations.router, connections.router, devices.router, tags.router):
         app.include_router(configuration_router)
 

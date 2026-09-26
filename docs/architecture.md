@@ -198,3 +198,13 @@ The existing worker now hosts a separate AutomationEngine alongside polling, his
 and command processing. PostgreSQL current values -> typed condition evaluation -> persistent
 commands -> existing verified write processor. The engine has no transport dependency. Runtime
 state and execution-to-command links survive restart. See [automation semantics](automation.md).
+
+
+## Phase 8: Alarms and notifications
+
+AlarmEngine is a separate worker task observing current values, with independent rules/runtime/events.
+It does not enqueue commands or change Automation. Alarm transitions commit PostgreSQL NOTIFY with
+the event; the existing API listener and frontend socket distribute invalidations. A durable Telegram
+outbox is consumed by a separate bounded HTTP task, so delivery latency never blocks polling or control.
+Non-secret chat destination is relational configuration; the bot token lives only in worker environment.
+See [alarms](alarms.md) for quality, restart, lifecycle and delivery semantics.

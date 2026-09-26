@@ -1,5 +1,6 @@
 from functools import lru_cache
 from typing import Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -17,6 +18,20 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     worker_heartbeat_seconds: float = Field(default=10, ge=1, le=3600)
+    telegram_timezone: str = "UTC"
+
+    @field_validator("telegram_timezone")
+    @classmethod
+    def valid_telegram_timezone(cls, value: str) -> str:
+        try:
+            ZoneInfo(value)
+        except (ZoneInfoNotFoundError, ValueError):
+            raise ValueError("TELEGRAM_TIMEZONE must be a valid IANA time zone") from None
+        return value
+
+    telegram_enabled: bool = False
+    telegram_bot_token: SecretStr = SecretStr("")
+    telegram_timeout_seconds: float = Field(default=5, ge=1, le=15)
     modbus_writes_enabled: bool = False
     command_max_attempts: int = Field(default=3, ge=1, le=5)
     command_max_age_seconds: int = Field(default=60, ge=1, le=3600)

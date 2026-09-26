@@ -61,7 +61,12 @@ services:
 
   worker:
     build: ./server
-    environment: *server-environment
+    environment:
+      <<: *server-environment
+      TELEGRAM_ENABLED: ${TELEGRAM_ENABLED:-false}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_TIMEOUT_SECONDS: ${TELEGRAM_TIMEOUT_SECONDS:-5}
+      TELEGRAM_TIMEZONE: ${TELEGRAM_TIMEZONE:-UTC}
     command: ["python", "-m", "app.worker"]
     depends_on:
       postgres:

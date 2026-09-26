@@ -14,7 +14,7 @@
 - Use type hints, small modules, explicit error handling, and migrations for schema changes.
 - Never commit credentials or local environment files.
 - Phase 7 adds Automation through persistent, verified commands; physical writes are disabled by default.
-- No schedules, scripts, alarms, dashboard editing, authentication, or permissions yet.
+- No schedules, scripts, dashboard editing, authentication, or permissions yet.
 - All physical control actions must go through the persistent command pipeline. Only the worker command processor may execute Modbus writes.
 - Verify writes by read-back. Never replay an uncertain physical write or restart-interrupted command.
 - Freeze command mode and configuration versions at enqueue; reject changed targets at execution.
@@ -45,3 +45,8 @@
 - Automation may only request control actions through the existing persistent command pipeline. Automation must never perform direct Modbus writes.
 - Automation requires fresh GOOD values with matching source provenance. Preserve consumed edges across restarts; restart uncompleted FOR timers.
 - Keep automation configuration relational, log executions and retain linked command history. Rules with execution history cannot be deleted.
+
+- Alarms report abnormal conditions independently from Automation; they never perform control actions.
+- Secrets such as Telegram bot tokens must never be committed, logged, returned by APIs, or stored in frontend code.
+- Alarm events retain history; invalid telemetry cannot clear a valid open threshold alarm.
+- Telegram is explicitly opt-in; automated tests mock HTTP and must never send real notifications.

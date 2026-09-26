@@ -197,3 +197,21 @@ use separate Numeric and Boolean columns with exclusivity constraints, restricti
 and FK indexes. Rules store ALL/ANY, priority, FOR and cooldown. Runtime stores edge/latch/timer
 state; executions retain diagnostic snapshots and link relationally to existing commands. Referenced
 configuration and retained execution records are never silently cascaded away. See [automation](automation.md).
+
+
+## Alarms (Phase 8, migration 0008_alarms)
+
+- alarm_rules: restrictive Tag FK, typed numeric/boolean threshold, validated operator/severity,
+  enabled, FOR milliseconds, hysteresis, notification flag and UTC configuration timestamps.
+- alarm_runtime: one restrictive rule FK/PK and pending true_since. Restart resets pending timers.
+- alarm_events: retained typed trigger value and metadata snapshot, rule/Tag restrictive FKs,
+  ACTIVE/ACKNOWLEDGED/CLEARED state, UTC lifecycle times, close reason and monotonic revision.
+  A partial unique index allows at most one open event per rule. Lookup indexes cover Tag/rule,
+  severity/state and activated time. Referenced rules cannot be deleted.
+- telegram_destination: checked singleton ID=1 and non-secret chat ID; no bot token in database.
+- notification_deliveries: optional restrictive event FK, frozen destination/message, kind/status,
+  attempt count and UTC delivery timestamps; unique (event_id, kind) prevents duplicate activation
+  enqueue. Explicit test deliveries have no event. Status and creation indexes support outbox lookup.
+
+Downgrade removes these new tables only, in FK-safe order. Previous revisions are unchanged.
+No alarm-event deletion API or retention is implemented; historical events remain available.

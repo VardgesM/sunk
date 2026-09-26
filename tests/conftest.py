@@ -17,6 +17,8 @@ def disable_background_database_tasks(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("TELEMETRY_SOURCE", "")
     monkeypatch.setenv("SIMULATOR_ENABLED", "false")
     monkeypatch.setenv("MODBUS_WRITES_ENABLED", "false")
+    monkeypatch.setenv("TELEGRAM_ENABLED", "false")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "")
 
 
 @pytest.fixture

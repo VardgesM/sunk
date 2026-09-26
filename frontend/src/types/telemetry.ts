@@ -1,3 +1,4 @@
+import { isAlarmEvent, type AlarmEvent } from './alarms';
 import { isCommand, type Command } from './commands';
 export const qualities = ['GOOD', 'STALE', 'BAD', 'COMM_ERROR', 'DISABLED'] as const;
 export type Quality = typeof qualities[number];
@@ -13,6 +14,7 @@ export interface CurrentValue {
 }
 
 export type LiveEvent =
+  | { type: 'alarm_event'; data: AlarmEvent }
   | { type: 'command_status'; data: Command }
   | { type: 'tag_value'; data: CurrentValue }
   | { type: 'tag_deleted'; tag_id: number }
@@ -45,6 +47,7 @@ export function isCurrentValue(value: unknown): value is CurrentValue {
 export function parseLiveEvent(data: string): LiveEvent {
   const value: unknown = JSON.parse(data);
   if (!object(value)) throw new Error('Invalid live event');
+  if (value.type === 'alarm_event' && isAlarmEvent(value.data)) return { type: 'alarm_event', data: value.data };
   if (value.type === 'command_status' && isCommand(value.data)) return { type: 'command_status', data: value.data };
   if (value.type === 'tag_value' && isCurrentValue(value.data)) return { type: 'tag_value', data: value.data };
   if (value.type === 'tag_deleted' && Number.isInteger(value.tag_id) && Number(value.tag_id) > 0) return { type: 'tag_deleted', tag_id: Number(value.tag_id) };

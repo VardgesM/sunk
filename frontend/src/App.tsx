@@ -2,10 +2,12 @@ import { lazy, Suspense, useState } from 'react';
 import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { AppBar, Box, Divider, Drawer, IconButton, List, ListItemButton, ListItemText, Toolbar, Typography } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
+import AlarmIndicator from './components/AlarmIndicator';
 import HealthStatus from './components/HealthStatus';
 import { SourceMode } from './components/RuntimeStatus';
 import PlaceholderPage from './pages/PlaceholderPage';
 
+const AlarmsPage = lazy(() => import('./pages/AlarmsPage'));
 const AutomationPage = lazy(() => import('./pages/AutomationPage'));
 const CommandsPage = lazy(() => import('./pages/CommandsPage'));
 const LocationsPage = lazy(() => import('./pages/LocationsPage'));
@@ -43,6 +45,7 @@ export default function App() {
         <Toolbar sx={{ gap: 1 }}>
           <IconButton color="inherit" aria-label="Open navigation" aria-expanded={open} onClick={() => setOpen(true)} edge="start" sx={{ display: { md: 'none' } }}><MenuIcon /></IconButton>
           <Typography sx={{ flexGrow: 1, fontSize: { xs: 14, sm: 18 } }}>Monitoring workspace</Typography>
+          <AlarmIndicator />
           <HealthStatus />
         </Toolbar>
       </AppBar>
@@ -60,11 +63,12 @@ export default function App() {
           <Route path="/locations" element={<LocationsPage />} />
           <Route path="/connections" element={<ConnectionsPage />} />
           <Route path="/devices" element={<DevicesPage />} />
+          <Route path="/alarms" element={<AlarmsPage />} />
           <Route path="/automation" element={<AutomationPage />} />
           <Route path="/commands" element={<CommandsPage />} />
           <Route path="/tags" element={<TagsPage />} />
           <Route path="/tags/:id" element={<TagDetailsPage key={location.pathname} />} />
-          {['Dashboard', 'Alarms', 'Users', 'Settings'].map((page) => <Route key={page} path={`/${page.toLowerCase()}`} element={<PlaceholderPage title={page} />} />)}
+          {['Dashboard', 'Users', 'Settings'].map((page) => <Route key={page} path={`/${page.toLowerCase()}`} element={<PlaceholderPage title={page} />} />)}
           <Route path="*" element={<Typography component="h1">Page not found</Typography>} />
         </Routes>
         </Suspense>

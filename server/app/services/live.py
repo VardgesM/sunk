@@ -7,6 +7,7 @@ import asyncpg
 from app.core.config import Settings
 from app.db.session import Database
 from app.schemas.telemetry import TagValueEvent
+from app.services.alarms import ALARM_CHANNEL, get_event
 from app.services.commands import COMMAND_CHANNEL, get_command
 from app.services.current_values import CHANNEL, get_current, mark_stale
 
@@ -65,6 +66,7 @@ class NotificationListener:
         self.database, self.hub, self.connect = database, hub, connect
         self.pending: set[int] = set()
         self.pending_commands: set[int] = set()
+        self.pending_alarms: set[int] = set()
         self.wake = asyncio.Event()
         self.overflow = False
 
@@ -78,7 +80,13 @@ class NotificationListener:
         except ValueError:
             logger.warning("Ignored malformed telemetry notification")
             return
-        pending = self.pending_commands if _channel == COMMAND_CHANNEL else self.pending
+        pending = (
+            self.pending_alarms
+            if _channel == ALARM_CHANNEL
+            else self.pending_commands
+            if _channel == COMMAND_CHANNEL
+            else self.pending
+        )
         if len(pending) >= 10000:
             self.overflow = True
         else:
@@ -91,11 +99,18 @@ class NotificationListener:
             self.overflow = False
             self.hub.publish({"type": "resync_required"})
         commands, self.pending_commands = self.pending_commands, set()
+        alarms, self.pending_alarms = self.pending_alarms, set()
         async with self.database.sessions() as session:
+            for identifier in sorted(alarms):
+                event = await get_event(session, identifier)
+                if event:
+                    self.hub.publish({"type": "alarm_event", "data": event.model_dump(mode="json")})
             for identifier in sorted(commands):
                 command = await get_command(session, identifier)
                 if command:
-                    self.hub.publish({"type": "command_status", "data": command.model_dump(mode="json")})
+                    self.hub.publish(
+                        {"type": "command_status", "data": command.model_dump(mode="json")}
+                    )
             for identifier in sorted(identifiers):
                 value = await get_current(session, identifier)
                 self.hub.publish(
@@ -112,6 +127,7 @@ class NotificationListener:
                 connection = await self.connect()
                 await connection.add_listener(CHANNEL, self.notified)
                 await connection.add_listener(COMMAND_CHANNEL, self.notified)
+                await connection.add_listener(ALARM_CHANNEL, self.notified)
                 delay = 1
                 self.hub.status(True)
                 while True:

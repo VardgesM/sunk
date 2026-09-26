@@ -12,6 +12,11 @@ function openSocket(): WebSocket {
 }
 
 export class LiveStore {
+  private alarmListeners = new Set<() => void>();
+  subscribeAlarms = (callback: () => void): (() => void) => {
+    this.alarmListeners.add(callback);
+    return () => { this.alarmListeners.delete(callback); };
+  };
   private commandListeners = new Set<(command: Command | null) => void>();
   subscribeCommands = (callback: (command: Command | null) => void): (() => void) => {
     this.commandListeners.add(callback);
@@ -125,16 +130,17 @@ export class LiveStore {
       watch(45000);
       try {
         const event = parseLiveEvent(String(message.data));
-        if (event.type === 'command_status') this.commandListeners.forEach((callback) => callback(event.data));
+        if (event.type === 'alarm_event') this.alarmListeners.forEach(callback => callback());
+        else if (event.type === 'command_status') this.commandListeners.forEach((callback) => callback(event.data));
         else if (event.type === 'tag_value') this.merge(event.data);
         else if (event.type === 'tag_deleted') { this.deleted.add(event.tag_id); this.remove(event.tag_id); }
-        else if (event.type === 'resync_required') { this.commandListeners.forEach((callback) => callback(null)); void this.sync(generation); }
+        else if (event.type === 'resync_required') { this.commandListeners.forEach((callback) => callback(null)); this.alarmListeners.forEach(callback => callback()); void this.sync(generation); }
         else {
           const ready = event.type === 'stream_status' ? event.ready : event.listener_ready;
           const restored = !this.listenerReady && ready;
           this.listenerReady = ready;
           if (!ready) this.setStatus('Reconnecting', 'Waiting for PostgreSQL live updates');
-          if (restored || event.type === 'ready') { this.commandListeners.forEach((callback) => callback(null)); void this.sync(generation); }
+          if (restored || event.type === 'ready') { this.commandListeners.forEach((callback) => callback(null)); this.alarmListeners.forEach(callback => callback()); void this.sync(generation); }
         }
       } catch (reason) {
         this.setStatus('Reconnecting', reason instanceof Error ? reason.message : 'Invalid live message');

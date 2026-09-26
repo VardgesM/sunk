@@ -1,14 +1,14 @@
 # Modbus Monitor
 
 A configurable industrial monitoring platform. FastAPI and the worker share one Python package;
-React/TypeScript/MUI provides the interface. Phase 7 adds dynamic Automation rules through the persistent verified command queue, alongside RTU/TCP reads, simulator
+React/TypeScript/MUI provides the interface. Phase 8 adds Alarms and optional Telegram notifications alongside Automation, verified commands, RTU/TCP reads, simulator
 telemetry, current values, history and WebSocket charts. Physical writes are disabled by default.
-Authentication, dashboard editing and alarms remain deferred.
+Authentication and dashboard editing remain deferred.
 
 ## Repository
 
 - `server/app`: API, shared settings/database infrastructure, schemas, and separate worker entry point.
-- `server/alembic`: foundation, configuration, current values, commands and `0007_automation` migrations.
+- `server/alembic`: foundation, configuration, current values, commands and `0007_automation` / `0008_alarms` migrations.
 - `frontend/src`: existing shell, four configuration pages, API client, health indicator and UI tests.
 - `tests`: health/worker tests, relational CRUD tests, migration checks and opt-in PostgreSQL integration.
 - `docs`: [architecture](docs/architecture.md), [database](docs/database.md), [Modbus boundary](docs/modbus.md).
@@ -39,7 +39,7 @@ The status chip checks API liveness on load and every 15 seconds; it does not re
 Compose starts `postgres`, `api`, `worker`, and `frontend`. PostgreSQL, API and frontend have health
 checks. Worker health is observable through heartbeat logs; there is no misleading process-only health
 check. The API applies migrations before starting; the worker waits for API/database readiness.
-The API applies migrations through `0006_commands` on existing databases and fresh volumes.
+The API applies migrations through `0008_alarms` on existing databases and fresh volumes.
 Existing tags with history_enabled=true begin storing every sample after upgrade; review their
 policy/retention settings before running high-frequency collection.
 
@@ -299,7 +299,7 @@ Do not run the simulator restart smoke concurrently with tests using the develop
 
 - Backend: 218 passed with PostgreSQL integration enabled (217 passed, 1 skipped without it).
 - Frontend: 32 tests passed; TypeScript, ESLint and production build passed.
-- Ruff, Compose validation, image builds, migrations through `0006_commands`, PostgreSQL
+- Ruff, Compose validation, image builds, migrations through `0008_alarms`, PostgreSQL
   upgrade/downgrade/replay and Alembic metadata comparison passed.
 - Isolated Docker TCP: four read functions, slave addressing, source/status/test APIs, current/history,
   WebSocket/chart rendering, communication failure/recovery and dynamic configuration passed.
@@ -371,7 +371,7 @@ Run `.\.venv\Scripts\python.exe tests/compose_automation_smoke.py` after
 - Backend (including isolated PostgreSQL): **362 passed**. Automation-specific tests: **37 passed**.
 - Frontend: **44 passed** across 8 files; TypeScript, ESLint and production build passed.
 - Ruff and Docker Compose validation passed. Alembic offline SQL, PostgreSQL upgrade/downgrade/replay,
-  and metadata comparison passed. Local API now runs migration `0007_automation`.
+  and metadata comparison passed. At Phase 7 verification the local API ran migration `0007_automation`.
 - `tests/compose_automation_smoke.py`: simulator ON/OFF rules, FOR, hysteresis, single-edge behavior,
   ALL conditions, source=automation commands, verified values, history/WebSocket and mobile UI passed.
 - `tests/compose_commands_smoke.py` and `tests/compose_modbus_smoke.py`: existing simulator/software TCP,
@@ -386,3 +386,25 @@ The exact integration commands (from the repository root, after building images)
 .\.venv\Scripts\python.exe tests/compose_commands_smoke.py
 .\.venv\Scripts\python.exe tests/compose_modbus_smoke.py
 ```
+
+
+## Alarms and Telegram (Phase 8)
+
+Open **Alarms** for active events, retained history, rule management and Telegram delivery results.
+Alarms never control equipment; Automation continues to use verified commands. Fresh GOOD values,
+FOR delay and hysteresis determine activation/clear. Acknowledge records operator awareness;
+it does not clear an abnormal reading. See [alarm lifecycle and Telegram setup](docs/alarms.md).
+
+Telegram defaults off. Set TELEGRAM_ENABLED=true and TELEGRAM_BOT_TOKEN privately in the worker
+environment, configure chat ID in the Alarms -> Telegram tab, then explicitly send a test.
+The token is never accepted by the browser/API. A queued test is only successful when delivery
+status is SENT. Network failures are isolated and are not retried automatically.
+
+After pulling this phase: `docker compose up --build -d --wait` applies migration 0008 and updates
+the stack. For native RTU workflow, update API/frontend containers and restart the native worker
+using the same existing source/database configuration (do not start a second Docker worker).
+
+Additional isolated regression: `.venv\Scripts\python.exe tests/compose_alarms_smoke.py` after
+`docker compose build api worker frontend`. No physical I/O or real Telegram in this test.
+
+Phase 8 exact commands, results and integration limits: [verification report](docs/phase8-verification.md).

@@ -24,6 +24,8 @@ def test_worker_heartbeat_and_clean_shutdown(
         monkeypatch.setattr(worker, "Database", lambda settings: database)
         monkeypatch.setattr(worker.CommandProcessor, "run", AsyncMock())
         monkeypatch.setattr(worker.AutomationEngine, "run", AsyncMock())
+        monkeypatch.setattr(worker.AlarmEngine, "run", AsyncMock())
+        monkeypatch.setattr(worker.NotificationSender, "run", AsyncMock())
         await asyncio.wait_for(
             worker.run(Settings(postgres_password="test-only"), stop), timeout=1,
         )
