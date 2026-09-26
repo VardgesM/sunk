@@ -2,7 +2,7 @@
 
 All physical control actions go through PostgreSQL `commands`. Only the worker command processor
 calls PyModbus write methods. The API validates/enqueues; the frontend never changes actual values
-optimistically. Automation, schedules, alarms, authentication and permissions are not implemented.
+optimistically. Automation now uses this same pipeline (see automation.md); schedules, alarms, authentication and permissions remain deferred.
 Command records provide a durable action record, but **not authenticated actor attribution**.
 Keep the current localhost-only deployment; the master switch is not an authorization system.
 
@@ -35,7 +35,7 @@ EXPIRED. Only successful read-back can produce SUCCESS. A valid mismatching read
 stores the actual verified value and updates current/history/WebSocket with that actual reading.
 Verification failure does not undo a device action. A communication error never substitutes fake zero.
 
-The API stores requested value, previous current value at enqueue, source=manual, source mode, three
+The API stores requested value, previous current value at enqueue, source=manual or automation, source mode, three
 configuration versions, request UUID, expiry and timestamps. Numeric/boolean fields are relational
 typed columns; numeric API command values are exact decimal strings to preserve uint64/browser precision.
 Responses include Tag/Device names (current metadata), verified value, attempts, status/error and revision.

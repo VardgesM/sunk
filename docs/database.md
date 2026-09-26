@@ -188,3 +188,12 @@ command records and the runtime flag; previous migrations remain unchanged.
 
 See [command protocol](commands.md). Source supports manual/automation/system in storage, but this
 phase's API and processor accept manual only. Command records do not claim authenticated attribution.
+
+## Phase 7 Automation
+
+Migration `0007_automation` adds automation_rules, automation_conditions, automation_actions,
+automation_runtime, automation_executions and automation_execution_commands. Conditions/actions
+use separate Numeric and Boolean columns with exclusivity constraints, restrictive Tag/rule FKs
+and FK indexes. Rules store ALL/ANY, priority, FOR and cooldown. Runtime stores edge/latch/timer
+state; executions retain diagnostic snapshots and link relationally to existing commands. Referenced
+configuration and retained execution records are never silently cascaded away. See [automation](automation.md).

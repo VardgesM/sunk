@@ -1,14 +1,14 @@
 # Modbus Monitor
 
 A configurable industrial monitoring platform. FastAPI and the worker share one Python package;
-React/TypeScript/MUI provides the interface. Phase 6 adds persistent manual commands and verified Modbus writes alongside RTU/TCP reads, simulator
+React/TypeScript/MUI provides the interface. Phase 7 adds dynamic Automation rules through the persistent verified command queue, alongside RTU/TCP reads, simulator
 telemetry, current values, history and WebSocket charts. Physical writes are disabled by default.
-Authentication, automation, dashboards and alarms remain deferred.
+Authentication, dashboard editing and alarms remain deferred.
 
 ## Repository
 
 - `server/app`: API, shared settings/database infrastructure, schemas, and separate worker entry point.
-- `server/alembic`: foundation, configuration, current values, and `0006_commands` migrations.
+- `server/alembic`: foundation, configuration, current values, commands and `0007_automation` migrations.
 - `frontend/src`: existing shell, four configuration pages, API client, health indicator and UI tests.
 - `tests`: health/worker tests, relational CRUD tests, migration checks and opt-in PostgreSQL integration.
 - `docs`: [architecture](docs/architecture.md), [database](docs/database.md), [Modbus boundary](docs/modbus.md).
@@ -350,3 +350,39 @@ Commands require a Phase 6 worker; the API cannot execute them on its own.
 The connected sensor worker is a native Windows process. Updating Docker API/frontend does not reload
 that process's Python code: restart it with the documented native command to load the Phase 6 processor.
 Keep `MODBUS_WRITES_ENABLED=false` for sensor-only operation; do not enable it to troubleshoot reads.
+
+## Phase 7: Automation / Conditions
+
+Open **Automation** to configure dynamic ALL/ANY conditions, FOR duration, hysteresis, cooldown
+and verified SET_TAG_VALUE actions. All actions use the existing persistent command queue; physical
+writes remain disabled by default. No physical automation rules are seeded.
+
+Apply `alembic upgrade head` (or recreate the API, whose startup applies migrations), then restart
+the worker and frontend to load Phase 7. For Windows COM ports use the existing native worker
+workflow, with `MODBUS_WRITES_ENABLED=false` during deployment.
+
+See [Automation behavior, API, safety and simulator testing](docs/automation.md).
+Run `.\.venv\Scripts\python.exe tests/compose_automation_smoke.py` after
+`docker compose build api worker frontend` for the isolated simulator/browser integration.
+
+
+### Phase 7 verification results
+
+- Backend (including isolated PostgreSQL): **362 passed**. Automation-specific tests: **37 passed**.
+- Frontend: **44 passed** across 8 files; TypeScript, ESLint and production build passed.
+- Ruff and Docker Compose validation passed. Alembic offline SQL, PostgreSQL upgrade/downgrade/replay,
+  and metadata comparison passed. Local API now runs migration `0007_automation`.
+- `tests/compose_automation_smoke.py`: simulator ON/OFF rules, FOR, hysteresis, single-edge behavior,
+  ALL conditions, source=automation commands, verified values, history/WebSocket and mobile UI passed.
+- `tests/compose_commands_smoke.py` and `tests/compose_modbus_smoke.py`: existing simulator/software TCP,
+  command read-back, four read functions, charts, history/live updates and outage recovery passed.
+- All disposable integration projects and their fixture volumes were removed. No physical automation
+  tests were run, and no rules were seeded in the working database. Physical writes remain disabled.
+
+The exact integration commands (from the repository root, after building images) are:
+
+```powershell
+.\.venv\Scripts\python.exe tests/compose_automation_smoke.py
+.\.venv\Scripts\python.exe tests/compose_commands_smoke.py
+.\.venv\Scripts\python.exe tests/compose_modbus_smoke.py
+```

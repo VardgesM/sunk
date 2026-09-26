@@ -6,6 +6,7 @@ import HealthStatus from './components/HealthStatus';
 import { SourceMode } from './components/RuntimeStatus';
 import PlaceholderPage from './pages/PlaceholderPage';
 
+const AutomationPage = lazy(() => import('./pages/AutomationPage'));
 const CommandsPage = lazy(() => import('./pages/CommandsPage'));
 const LocationsPage = lazy(() => import('./pages/LocationsPage'));
 const ConnectionsPage = lazy(() => import('./pages/ConnectionsPage'));
@@ -15,7 +16,7 @@ const TagDetailsPage = lazy(() => import('./pages/TagDetailsPage'));
 
 const drawerWidth = 240;
 // Shell navigation only. Dashboard definitions and widgets will come from PostgreSQL.
-const pages = ['Dashboard', 'Locations', 'Connections', 'Devices', 'Tags', 'Commands', 'Alarms', 'Users', 'Settings'];
+const pages = ['Dashboard', 'Locations', 'Connections', 'Devices', 'Tags', 'Commands', 'Automation', 'Alarms', 'Users', 'Settings'];
 
 export default function App() {
   const [open, setOpen] = useState(false);
@@ -59,6 +60,7 @@ export default function App() {
           <Route path="/locations" element={<LocationsPage />} />
           <Route path="/connections" element={<ConnectionsPage />} />
           <Route path="/devices" element={<DevicesPage />} />
+          <Route path="/automation" element={<AutomationPage />} />
           <Route path="/commands" element={<CommandsPage />} />
           <Route path="/tags" element={<TagsPage />} />
           <Route path="/tags/:id" element={<TagDetailsPage key={location.pathname} />} />

@@ -9,7 +9,16 @@ from sqlalchemy import select, text, update
 
 from app.core.config import Settings
 from app.db.session import Database
-from app.models import Command, Connection, Device, Tag, TagCurrentValue
+from app.models import (
+    AutomationExecution,
+    AutomationExecutionCommand,
+    AutomationRule,
+    Command,
+    Connection,
+    Device,
+    Tag,
+    TagCurrentValue,
+)
 from app.schemas.telemetry import utc
 from app.services.commands import TERMINAL, command_value, notify_command, validate_write
 from app.services.current_values import Reading, upsert_current
@@ -170,10 +179,33 @@ class CommandProcessor:
                             "Target configuration changed after enqueue; create a new command"
                         )
                     if (
-                        command.source != "manual"
+                        command.source not in ("manual", "automation")
                         or command.telemetry_mode != self.settings.source_mode
                     ):
                         raise ValueError("Command source/mode does not match this worker")
+                    if command.source == "automation":
+                        origin = (
+                            await session.execute(
+                                select(AutomationRule, AutomationExecution)
+                                .join(
+                                    AutomationExecution,
+                                    AutomationExecution.rule_id == AutomationRule.id,
+                                )
+                                .join(
+                                    AutomationExecutionCommand,
+                                    AutomationExecutionCommand.execution_id
+                                    == AutomationExecution.id,
+                                )
+                                .where(AutomationExecutionCommand.command_id == command.id)
+                                .with_for_update(read=True, of=AutomationRule)
+                            )
+                        ).first()
+                        if (
+                            not origin
+                            or not origin[0].enabled
+                            or utc(origin[0].updated_at) != utc(origin[1].rule_version)
+                        ):
+                            raise ValueError("Automation rule disabled, changed or missing")
                     if isinstance(self.source, ModbusSource) and (
                         not self.settings.modbus_writes_enabled or not command.physical_confirmed
                     ):

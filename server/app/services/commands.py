@@ -1,9 +1,11 @@
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from uuid import uuid4
 
 from sqlalchemy import Select, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Command, Connection, Device, Tag
+from app.models import Command, Connection, Device, Tag, TagCurrentValue
 from app.schemas.commands import CommandRead
 from app.services.encoding import encode_registers, verification_matches
 from app.worker.decoder import decode_registers
@@ -107,3 +109,49 @@ def command_query() -> Select[tuple[Command, Tag, Device]]:
 async def get_command(session: AsyncSession, identifier: int) -> CommandRead | None:
     row = (await session.execute(command_query().where(Command.id == identifier))).first()
     return serialize_command(*row) if row else None
+
+
+async def enqueue_command(
+    session: AsyncSession,
+    tag: Tag,
+    device: Device,
+    connection: Connection,
+    value: Decimal | bool,
+    *,
+    mode: str,
+    writes_enabled: bool,
+    physical_confirmed: bool,
+    max_age_seconds: int,
+    source: str = "manual",
+    request_id: str | None = None,
+) -> Command:
+    """Shared manual/automation enqueue validation; caller owns transaction and target locks."""
+    validate_write(tag, device, connection, value)
+    if source not in ("manual", "automation") or mode not in ("simulator", "modbus"):
+        raise ValueError("Unsupported command source/mode")
+    if mode == "modbus" and (not writes_enabled or not physical_confirmed):
+        raise ValueError("Physical writes are disabled or not confirmed")
+    now = datetime.now(UTC)
+    current = await session.get(TagCurrentValue, tag.id)
+    boolean = type(value) is bool
+    command = Command(
+        request_id=request_id or str(uuid4()),
+        tag_id=tag.id,
+        requested_boolean=value if boolean else None,
+        requested_numeric=None if boolean else value,
+        previous_numeric=current.value_numeric if current else None,
+        previous_boolean=current.value_boolean if current else None,
+        status="QUEUED",
+        source=source,
+        telemetry_mode=mode,
+        physical_confirmed=physical_confirmed,
+        created_at=now,
+        expires_at=now + timedelta(seconds=max_age_seconds),
+        tag_version=tag.updated_at,
+        device_version=device.updated_at,
+        connection_version=connection.updated_at,
+    )
+    session.add(command)
+    await session.flush()
+    await notify_command(session, command.id)
+    return command

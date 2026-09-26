@@ -183,7 +183,7 @@ No automatic simulation fallback exists. See [Modbus](modbus.md) and [deployment
 Frontend -> API validation -> PostgreSQL commands -> worker claim -> shared transport lock -> write ->
 read-back -> current/history update + command result + transactional NOTIFY -> existing API WebSocket.
 Only the command processor issues write functions. The API may enqueue/cancel but never opens a Modbus
-client. All future physical control, including automation, must use this same persistent pipeline.
+client. All physical control, including Phase 7 Automation, uses this same persistent pipeline.
 
 The worker commits status transitions, revalidates immutable target versions, and uses the existing
 RTU mutex/client. Configuration share locks prevent retargeting during a bounded action. Current-state
@@ -191,3 +191,10 @@ persistence rejects older acquisition times. Startup fails interrupted commands 
 uncertain physical effects. PostgreSQL remains the sole shared infrastructure; no command broker added.
 See [commands](commands.md) for retry boundaries, expiry, exact value encoding, simulator behavior and
 why successful register read-back is not proof of mechanical actuation.
+
+## Phase 7 Automation
+
+The existing worker now hosts a separate AutomationEngine alongside polling, history maintenance
+and command processing. PostgreSQL current values -> typed condition evaluation -> persistent
+commands -> existing verified write processor. The engine has no transport dependency. Runtime
+state and execution-to-command links survive restart. See [automation semantics](automation.md).

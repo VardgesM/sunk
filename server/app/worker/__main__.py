@@ -6,6 +6,7 @@ from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
 from app.db.session import Database
 from app.services.history_retention import retention_loop
+from app.worker.automation import AutomationEngine
 from app.worker.commands import CommandProcessor
 from app.worker.lease import watch_lease, worker_lease
 from app.worker.modbus import ConnectionManager, ModbusSource
@@ -51,6 +52,7 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
         asyncio.create_task(retention_loop(database, settings, stop)),
         asyncio.create_task(runtime_loop(database, settings, stop, manager)),
         asyncio.create_task(CommandProcessor(database, settings, source).run(stop)),
+        asyncio.create_task(AutomationEngine(database, settings).run(stop)),
     ]
     try:
         await asyncio.gather(*tasks)

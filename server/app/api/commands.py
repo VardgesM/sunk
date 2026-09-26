@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
@@ -7,11 +7,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_session
-from app.models import Command, Connection, Device, Tag, TagCurrentValue, WorkerRuntime
+from app.models import Command, Connection, Device, Tag, WorkerRuntime
 from app.schemas.commands import CommandCreate, CommandRead, CommandStatus
 from app.services.commands import (
     command_query,
     command_value,
+    enqueue_command,
     get_command,
     notify_command,
     serialize_command,
@@ -63,30 +64,19 @@ async def request_command(
             raise HTTPException(409, "Physical writes are disabled on the worker")
         if not payload.confirm_physical:
             raise HTTPException(422, "Explicit physical-write confirmation is required")
-    now = datetime.now(UTC)
-    current = await session.get(TagCurrentValue, tag_id)
-    boolean = type(payload.value) is bool
-    command = Command(
-        request_id=str(payload.request_id),
-        tag_id=tag_id,
-        requested_boolean=payload.value if boolean else None,
-        requested_numeric=None if boolean else payload.value,
-        previous_numeric=current.value_numeric if current else None,
-        previous_boolean=current.value_boolean if current else None,
-        status="QUEUED",
-        source="manual",
-        telemetry_mode=worker.mode,
-        physical_confirmed=payload.confirm_physical,
-        created_at=now,
-        expires_at=now + timedelta(seconds=request.app.state.settings.command_max_age_seconds),
-        tag_version=tag.updated_at,
-        device_version=device.updated_at,
-        connection_version=connection.updated_at,
-    )
-    session.add(command)
     try:
-        await session.flush()
-        await notify_command(session, command.id)
+        command = await enqueue_command(
+            session,
+            tag,
+            device,
+            connection,
+            payload.value,
+            mode=worker.mode,
+            writes_enabled=worker.writes_enabled,
+            physical_confirmed=payload.confirm_physical,
+            max_age_seconds=request.app.state.settings.command_max_age_seconds,
+            request_id=str(payload.request_id),
+        )
         await session.commit()
     except IntegrityError as exc:
         await session.rollback()
@@ -98,6 +88,7 @@ async def request_command(
 async def list_commands(
     session: Session,
     status: CommandStatus | None = None,
+    command_id: int | None = Query(None, gt=0, le=2147483647),
     tag_id: int | None = Query(None, gt=0, le=2147483647),
     device_id: int | None = Query(None, gt=0, le=2147483647),
     request_id: str | None = Query(None, max_length=36),
@@ -107,6 +98,7 @@ async def list_commands(
     statement = command_query()
     for column, value in (
         (Command.status, status),
+        (Command.id, command_id),
         (Command.tag_id, tag_id),
         (Device.id, device_id),
         (Command.request_id, request_id),

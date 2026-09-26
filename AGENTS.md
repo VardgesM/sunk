@@ -13,8 +13,8 @@
 - Update documentation when architectural decisions change.
 - Use type hints, small modules, explicit error handling, and migrations for schema changes.
 - Never commit credentials or local environment files.
-- Phase 6 adds persistent, verified manual commands; physical writes are disabled by default.
-- No automation, alarms, dashboard editing, authentication, or permissions yet.
+- Phase 7 adds Automation through persistent, verified commands; physical writes are disabled by default.
+- No schedules, scripts, alarms, dashboard editing, authentication, or permissions yet.
 - All physical control actions must go through the persistent command pipeline. Only the worker command processor may execute Modbus writes.
 - Verify writes by read-back. Never replay an uncertain physical write or restart-interrupted command.
 - Freeze command mode and configuration versions at enqueue; reject changed targets at execution.
@@ -41,3 +41,7 @@
 - Location mutations must prevent cycles, including concurrent reparenting through the API.
 - Use new Alembic revisions; never rewrite an already-applied migration.
 - SQLite is only an isolated test harness. PostgreSQL remains the sole runtime configuration store.
+
+- Automation may only request control actions through the existing persistent command pipeline. Automation must never perform direct Modbus writes.
+- Automation requires fresh GOOD values with matching source provenance. Preserve consumed edges across restarts; restart uncompleted FOR timers.
+- Keep automation configuration relational, log executions and retain linked command history. Rules with execution history cannot be deleted.

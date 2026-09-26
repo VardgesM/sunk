@@ -113,9 +113,11 @@ Tests require a live worker in modbus mode and expire after 30 seconds/configura
 Manual serial entry remains available. See [deployment and first-device checklist](modbus-deployment.md)
 for Windows native workers, Docker Desktop limitations, Linux device mappings and software test commands.
 
-Physical RTU hardware has not been verified. Unit tests cover serial construction/serialization and
+The automated suite does not claim physical RTU verification. Separate local bench checks have
+verified configured SHT20 reads and unloaded relay command read-back; those checks do not verify
+electrical contact behavior. Unit tests cover serial construction/serialization and
 transport-independent decoding; the software TCP server covers all read functions, slave addressing,
-failure and recovery. Manual commands are implemented in Phase 6; authorization and automation remain
+failure and recovery. Manual commands are implemented in Phase 6; Automation uses that queue in Phase 7; authorization remains
 deferred. Commands are durably recorded but do not yet identify an authenticated requester.
 
 ## Phase 6 write extension

@@ -17,3 +17,14 @@ __all__ = [
     "ConnectionRuntime",
     "WorkerRuntime",
 ]
+
+from app.models.automation import (
+    AutomationAction,
+    AutomationCondition,
+    AutomationExecution,
+    AutomationExecutionCommand,
+    AutomationRule,
+    AutomationRuntime,
+)
+
+__all__ += ["AutomationRule", "AutomationCondition", "AutomationAction", "AutomationRuntime", "AutomationExecution", "AutomationExecutionCommand"]
