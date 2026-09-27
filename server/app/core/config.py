@@ -2,7 +2,7 @@ from functools import lru_cache
 from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import Field, SecretStr, field_validator, model_validator
+from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import URL
 
@@ -10,7 +10,11 @@ from sqlalchemy import URL
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    application_mode: Literal["standalone", "edge", "cloud"] = "standalone"
+    application_mode: Literal["standalone", "edge", "cloud"] = Field(
+        default="standalone",
+        validation_alias=AliasChoices("APP_MODE", "APPLICATION_MODE", "application_mode"),
+    )
+    allowed_hosts: list[str] = ["*"]  # Local compatibility; production supplies explicit hosts.
     edge_installation_id: str | None = None
     sync_cloud_url: str = ""
     sync_token: SecretStr = SecretStr("")

@@ -1,0 +1,43 @@
+{
+    admin off
+    http_port 8080
+    https_port 8443
+    # H1/H2 only: no public UDP port is needed.
+    servers {
+        protocols h1 h2
+    }
+}
+
+# Internal container health only; never published.
+http://:8090 {
+    respond /healthz "ok" 200
+}
+
+{$CLOUD_SITE} {
+    encode zstd gzip
+    header {
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        Referrer-Policy same-origin
+        -Server
+    }
+    @api path /api /api/*
+    handle @api {
+        request_body {
+            max_size 5MB
+        }
+        header Cache-Control "no-store"
+        reverse_proxy api:8000
+    }
+    handle {
+        root * /srv
+        try_files {path} /index.html
+        header Cache-Control "no-cache"
+        file_server
+    }
+}
+
+# Reject unmatched plaintext Host headers instead of serving an empty default response.
+http:// {
+    respond "Unknown host" 421
+}

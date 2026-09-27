@@ -69,3 +69,8 @@
 - Remote physical actions must use the existing persistent Command pipeline.
 - PostgreSQL must never be exposed publicly for Edge/Cloud synchronization.
 - Synchronization must exclude users, password hashes, sessions and notification secrets.
+
+- Production secrets and database/certificate backups must never be committed.
+- Production Cloud exposes only its reverse proxy; PostgreSQL and FastAPI remain on private Docker networks.
+- Production Cloud must not include a hardware/Automation worker service, even behind an optional profile.
+- First production commissioning is read-only: physical writes are disabled on both Edge and Cloud.

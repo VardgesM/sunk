@@ -1,0 +1,15 @@
+FROM node:24-alpine AS build
+WORKDIR /app
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
+
+FROM caddy:2-alpine
+# Remove the upstream privileged-port file capability; high ports need no capabilities.
+RUN setcap -r /usr/bin/caddy && mkdir -p /srv /data /config && chown -R 1000:1000 /srv /data /config
+COPY --from=build --chown=1000:1000 /app/dist /srv
+COPY --chown=1000:1000 deploy/cloud/Caddyfile /etc/caddy/Caddyfile
+USER 1000:1000
+EXPOSE 8080 8443
+CMD ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]

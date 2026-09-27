@@ -23,7 +23,8 @@ async def effective_worker(session, settings, entity=None, identifier=None):
     heartbeat = datetime.fromisoformat(edge.runtime["heartbeat_at"])
     return SimpleNamespace(
         mode=edge.runtime["mode"],
-        writes_enabled=edge.runtime["writes_enabled"],
+        writes_enabled=edge.runtime["writes_enabled"]
+        and (edge.runtime["mode"] != "modbus" or settings.modbus_writes_enabled),
         hostname=edge.name,
         heartbeat_at=min(utc(heartbeat), utc(edge.last_seen_at)),
     )

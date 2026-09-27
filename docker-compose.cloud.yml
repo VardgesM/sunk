@@ -3,13 +3,13 @@
 services:
   api:
     environment:
-      APPLICATION_MODE: cloud
+      APP_MODE: cloud
       TELEMETRY_SOURCE: disabled
       SIMULATOR_ENABLED: "false"
       MODBUS_WRITES_ENABLED: "false"
   worker:
     profiles: [never-cloud]
     environment:
-      APPLICATION_MODE: cloud
+      APP_MODE: cloud
   sync:
     profiles: [never-cloud]

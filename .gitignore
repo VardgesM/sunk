@@ -1,6 +1,8 @@
 .env
 .env.*
 !.env.example
+!.env.cloud.example
+!.env.edge.example
 compose.rtu.local.yml
 .venv/
 __pycache__/
@@ -13,3 +15,9 @@ dist/
 *.tsbuildinfo
 .coverage
 .local/
+
+# Deployment backups and private TLS material
+backups/
+*.dump
+*.key
+*.pem

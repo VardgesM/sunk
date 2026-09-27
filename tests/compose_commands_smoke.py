@@ -20,6 +20,7 @@ async def main() -> None:
     origin = f"http://localhost:{frontend_port}"
     env = {
         **os.environ,
+        "APP_MODE": "standalone",
         "APPLICATION_MODE": "standalone",
         "EDGE_INSTALLATION_ID": "",
         "TELEGRAM_ENABLED": "false",

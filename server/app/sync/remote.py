@@ -44,6 +44,8 @@ async def cloud_mapping(session, entity: str, identifier: int):
 async def queue_command(session, request, payload, tag, device, connection):
     edge, mapping = await cloud_mapping(session, "tags", tag.id)
     runtime = edge.runtime
+    if runtime.get("mode") == "modbus" and not request.app.state.settings.modbus_writes_enabled:
+        raise HTTPException(409, "Remote physical writes are disabled on Cloud")
     if runtime.get("mode") not in ("simulator", "modbus"):
         raise HTTPException(409, "No confirmed Edge telemetry source")
     try:

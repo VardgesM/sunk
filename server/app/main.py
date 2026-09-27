@@ -7,6 +7,7 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.api import (
     alarms,
@@ -111,6 +112,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
+    app.add_middleware(
+        TrustedHostMiddleware, allowed_hosts=config.allowed_hosts, www_redirect=False
+    )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=config.cors_origins,

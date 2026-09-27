@@ -21,6 +21,7 @@ async def main() -> None:
     origin = f"http://localhost:{ui_port}"
     env = {
         **os.environ,
+        "APP_MODE": "standalone",
         "APPLICATION_MODE": "standalone",
         "EDGE_INSTALLATION_ID": "",
         "API_PORT": str(api_port),

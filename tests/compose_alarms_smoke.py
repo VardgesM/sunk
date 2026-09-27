@@ -18,6 +18,7 @@ async def main() -> None:
     api_port, ui_port, pg_port = free_port(), free_port(), free_port()
     env = {
         **os.environ,
+        "APP_MODE": "standalone",
         "APPLICATION_MODE": "standalone",
         "EDGE_INSTALLATION_ID": "",
         "AUTH_COOKIE_SECURE": "false",

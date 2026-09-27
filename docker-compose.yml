@@ -1,7 +1,7 @@
 name: modbus-monitor
 
 x-server-environment: &server-environment
-  APPLICATION_MODE: ${APPLICATION_MODE:-standalone}
+  APP_MODE: ${APP_MODE:-${APPLICATION_MODE:-standalone}}
   EDGE_INSTALLATION_ID: ${EDGE_INSTALLATION_ID:-}
   POSTGRES_HOST: postgres
   POSTGRES_PORT: 5432
@@ -106,7 +106,7 @@ services:
     build: ./server
     environment:
       <<: *server-environment
-      APPLICATION_MODE: edge
+      APP_MODE: edge
       SYNC_CLOUD_URL: ${SYNC_CLOUD_URL:-}
       SYNC_TOKEN: ${SYNC_TOKEN:-}
       SYNC_ALLOW_INSECURE_HTTP: ${SYNC_ALLOW_INSECURE_HTTP:-false}

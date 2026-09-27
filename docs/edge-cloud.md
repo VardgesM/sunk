@@ -150,3 +150,7 @@ uses simulator-only telemetry/Automation, interrupts Cloud, checks catch-up, his
 remote command read-back/idempotency, acknowledgement, WebSocket and mobile dashboard/chart.
 It removes its fixtures and volumes. It never writes physical relays or sends Telegram.
 No real VPS, WAN outage or physical remote-control test is implied by these checks.
+
+## Production preparation (11.1)
+
+The Compose commands above describe local/development deployment. For an Ubuntu VPS use [the dedicated production stack](production-cloud.md), which has no worker service or public database/API port. `APP_MODE` is now the canonical environment name; legacy `APPLICATION_MODE` remains supported, with APP_MODE taking precedence. Remote physical requests now also require Cloud MODBUS_WRITES_ENABLED=true; leave it false for initial monitoring. Edge execution safety is unchanged.

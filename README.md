@@ -472,3 +472,7 @@ WebSocket revocation and mobile layouts. It does not operate physical outputs or
 ## Phase 11: Edge / Cloud
 
 Standalone remains the default. Edge keeps all equipment access and safety local; an independent durable sync process uploads batches to Cloud over HTTPS. Cloud reuses authenticated dashboards, history, alarms and the verified command pipeline. See [Edge/Cloud setup and safety](docs/edge-cloud.md) for exact Compose/native Windows commands, machine enrollment, migration `0012_edge_cloud`, offline recovery and testing. Do not expose PostgreSQL publicly.
+
+## Phase 11.1: production Cloud preparation
+
+Use [production deployment instructions](docs/production-cloud.md) and `.env.cloud.example` with the **standalone** `docker-compose.cloud.production.yml`. It runs PostgreSQL, API, compiled React/Caddy and a one-shot migration gate; only 80/443 are public. The old Cloud Compose remains for development. `APP_MODE` is canonical; `APPLICATION_MODE` remains compatible. First commissioning keeps physical writes disabled on both Cloud and Edge. No VPS deployment is performed by these repository changes.

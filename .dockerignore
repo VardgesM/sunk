@@ -1,0 +1,12 @@
+.git
+.env
+.env.*
+.venv
+.local
+**/node_modules
+**/dist
+**/__pycache__
+backups
+*.dump
+*.pem
+*.key

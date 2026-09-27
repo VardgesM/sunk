@@ -1,0 +1,111 @@
+# Dedicated production Cloud stack. Do not merge with docker-compose.yml.
+name: modbus-cloud
+
+x-api: &api
+  image: modbus-cloud-api:local
+  build: ./server
+  environment: &environment
+    APP_MODE: cloud
+    POSTGRES_HOST: postgres
+    POSTGRES_PORT: 5432
+    POSTGRES_DB: ${POSTGRES_DB:-modbus_cloud}
+    POSTGRES_USER: ${POSTGRES_USER:-modbus_cloud}
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set a unique POSTGRES_PASSWORD}
+    TELEMETRY_SOURCE: disabled
+    SIMULATOR_ENABLED: "false"
+    MODBUS_WRITES_ENABLED: ${MODBUS_WRITES_ENABLED:-false}
+    TELEGRAM_ENABLED: "false"
+    CLOUD_HOST: ${CLOUD_HOST:?Set the public hostname or test IP}
+    CLOUD_SCHEME: ${CLOUD_SCHEME:-https}
+    CLOUD_PUBLIC_URL: ${CLOUD_PUBLIC_URL:?Set the exact public origin}
+    ALLOWED_HOSTS: '["${CLOUD_HOST}","localhost","127.0.0.1"]'
+    CORS_ORIGINS: '["${CLOUD_PUBLIC_URL}"]'
+    AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-true}
+    AUTH_SESSION_HOURS: ${AUTH_SESSION_HOURS:-8}
+    AUTH_LOGIN_ATTEMPTS: ${AUTH_LOGIN_ATTEMPTS:-10}
+    AUTH_LOGIN_WINDOW_SECONDS: ${AUTH_LOGIN_WINDOW_SECONDS:-900}
+    REMOTE_COMMAND_MAX_AGE_SECONDS: ${REMOTE_COMMAND_MAX_AGE_SECONDS:-60}
+    LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+  logging: &logging
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-modbus_cloud}
+      POSTGRES_USER: ${POSTGRES_USER:-modbus_cloud}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set a unique POSTGRES_PASSWORD}
+    volumes: [cloud_postgres:/var/lib/postgresql/data]
+    networks: [database]
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    logging: *logging
+
+  migrate:
+    <<: *api
+    command: [sh, -c, "python -m app.cloud_preflight && alembic upgrade head"]
+    networks: [database]
+    restart: "no"
+    depends_on:
+      postgres: {condition: service_healthy}
+
+  api:
+    <<: *api
+    command: [uvicorn, "app.main:create_app", --factory, --host, "0.0.0.0", --port, "8000", --proxy-headers, --forwarded-allow-ips, "*"]
+    # Forwarded headers are trusted only inside these private Docker networks.
+    # There is no host port for this service.
+    networks: [database, backend]
+    restart: unless-stopped
+    depends_on:
+      postgres: {condition: service_healthy}
+      migrate: {condition: service_completed_successfully}
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health/db', timeout=8)"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  frontend:
+    image: modbus-cloud-frontend:local
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile.production
+    environment:
+      CLOUD_SITE: "${CLOUD_SCHEME:-https}://${CLOUD_HOST:?Set CLOUD_HOST}"
+    ports:
+      - "${CLOUD_BIND_ADDRESS:-0.0.0.0}:${CLOUD_HTTP_PORT:-80}:8080"
+      - "${CLOUD_BIND_ADDRESS:-0.0.0.0}:${CLOUD_HTTPS_PORT:-443}:8443"
+    volumes: [caddy_data:/data, caddy_config:/config]
+    networks: [backend, public]
+    restart: unless-stopped
+    read_only: true
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    depends_on:
+      api: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, "http://127.0.0.1:8090/healthz"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+    logging: *logging
+
+networks:
+  database: {internal: true}
+  backend: {internal: true}
+  public: {}
+volumes:
+  cloud_postgres:
+  caddy_data:
+  caddy_config:
