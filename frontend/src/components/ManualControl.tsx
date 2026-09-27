@@ -10,7 +10,7 @@ import { useRuntime } from '../hooks/useRuntime';
 import { LiveValue } from './LiveValues';
 
 export default function ManualControl({ tag, confirmationRequired = false }: { tag: Tag; confirmationRequired?: boolean }) {
-  const { data: runtime } = useRuntime<SystemRuntime>('/system/runtime');
+  const { data: runtime } = useRuntime<SystemRuntime>(`/system/runtime?tag_id=${tag.id}`);
   const canControl = usePermission('command');
   const commands = useCommands(`tag_id=${tag.id}`);
   const [submitted, setSubmitted] = useState<Command>();

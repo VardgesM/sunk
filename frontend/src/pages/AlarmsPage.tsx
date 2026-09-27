@@ -1,4 +1,4 @@
-import { usePermission } from '../auth/context';
+import { useAuth, usePermission } from '../auth/context';
 import Can from '../auth/Can';
 import { useEffect, useState } from 'react';
 import { Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, Stack, Tab, Tabs, TextField, Typography } from '@mui/material';
@@ -12,6 +12,7 @@ const time = (value: string | null) => value ? new Date(value).toLocaleString() 
 
 export default function AlarmsPage() {
   const admin = usePermission('configure');
+  const cloud = useAuth().user?.application_mode === 'cloud';
   const live = useAlarmRefresh();
   const [tab, setTab] = useState(0); const [revision, refresh] = useState(0);
   const [events, setEvents] = useState<AlarmEvent[]>([]); const [rules, setRules] = useState<AlarmRule[]>([]);
@@ -49,7 +50,7 @@ export default function AlarmsPage() {
         <Typography variant="body2">Activated: {time(event.activated_at)} ? Acknowledged: {time(event.acknowledged_at)} ? Cleared: {time(event.cleared_at)}</Typography>
         {event.acknowledged_by_username && <Typography>Acknowledged by: {event.acknowledged_by_username}</Typography>}
         {event.clear_reason && <Typography variant="body2">{event.clear_reason}</Typography>}
-        {event.state === 'ACTIVE' && <Can permission="acknowledge"><Button disabled={busy} onClick={() => void action(() => alarmsApi.acknowledge(event.id), 'Alarm acknowledged')}>Acknowledge</Button></Can>}
+        {event.state === 'ACTIVE' && <Can permission="acknowledge"><Button disabled={busy} onClick={() => void action(() => alarmsApi.acknowledge(event.id), cloud ? 'Acknowledgement queued for Edge; waiting for confirmation' : 'Alarm acknowledged')}>Acknowledge</Button></Can>}
       </Box>)}
       <Stack direction="row"><Button disabled={!offset} onClick={() => setOffset(v => Math.max(0, v - 100))}>Previous</Button><Button disabled={events.length < 100} onClick={() => setOffset(v => v + 100)}>Next</Button></Stack>
     </>}

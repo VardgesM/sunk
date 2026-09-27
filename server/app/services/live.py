@@ -156,7 +156,7 @@ async def stale_loop(database: Database, settings: Settings) -> None:
     while True:
         try:
             async with database.sessions() as session, session.begin():
-                await mark_stale(session, settings.stale_multiplier)
+                await mark_stale(session, settings.stale_multiplier, write_history=settings.application_mode != "cloud")
         except Exception:
             logger.exception("Stale-state maintenance failed; retrying")
         await asyncio.sleep(settings.stale_check_seconds)

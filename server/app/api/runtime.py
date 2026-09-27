@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from typing import Annotated
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Path
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,10 +25,19 @@ Identifier = Annotated[int, Path(ge=1, le=2147483647)]
 
 
 @router.get("/system/runtime", response_model=SystemRuntime)
-async def system_runtime(session: Session) -> SystemRuntime:
-    worker = await session.get(WorkerRuntime, 1)
+async def system_runtime(
+    request: Request, session: Session, tag_id: int | None = Query(None, gt=0)
+) -> SystemRuntime:
+    from app.sync.runtime import effective_worker
+
+    worker = (
+        await effective_worker(session, request.app.state.settings, "tags", tag_id)
+        if tag_id
+        else await effective_worker(session, request.app.state.settings)
+    )
     alive = worker_alive(worker)
     return SystemRuntime(
+        application_mode=request.app.state.settings.application_mode,
         mode=worker.mode if alive else "unknown",
         alive=alive,
         writes_enabled=bool(alive and worker.writes_enabled),
@@ -51,10 +60,14 @@ async def serial_ports(session: Session) -> SerialPortsRead:
 
 
 @router.get("/connections/{identifier}/status", response_model=ConnectionStatus)
-async def connection_status(identifier: Identifier, session: Session) -> ConnectionStatus:
+async def connection_status(
+    identifier: Identifier, request: Request, session: Session
+) -> ConnectionStatus:
     config = await get_record(session, Connection, identifier)
     row = await session.get(ConnectionRuntime, identifier)
-    worker = await session.get(WorkerRuntime, 1)
+    from app.sync.runtime import effective_worker
+
+    worker = await effective_worker(session, request.app.state.settings, "connections", identifier)
     fresh = (
         row is not None
         and row.configuration_version is not None
@@ -152,7 +165,7 @@ async def read_test(identifier: Identifier, session: Session) -> ConnectionTest:
 
 
 @router.get("/devices/{identifier}/status", response_model=DeviceStatus)
-async def device_status(identifier: Identifier, session: Session) -> DeviceStatus:
+async def device_status(identifier: Identifier, request: Request, session: Session) -> DeviceStatus:
     device = await get_record(session, Device, identifier)
     if not device.enabled or not device.connection.enabled:
         return DeviceStatus(device_id=identifier, state="DISABLED")
@@ -166,7 +179,9 @@ async def device_status(identifier: Identifier, session: Session) -> DeviceStatu
             .where(Tag.device_id == identifier, Tag.enabled)
         )
     ).all()
-    worker = await session.get(WorkerRuntime, 1)
+    from app.sync.runtime import effective_worker
+
+    worker = await effective_worker(session, request.app.state.settings, "devices", identifier)
     valid_source = (
         "simulator" if worker and worker.mode == "simulator" else device.connection.protocol
     )

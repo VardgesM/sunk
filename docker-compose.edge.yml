@@ -1,0 +1,8 @@
+# docker compose -f docker-compose.yml -f docker-compose.edge.yml --profile edge up --build -d
+services:
+  api:
+    environment:
+      APPLICATION_MODE: edge
+  worker:
+    environment:
+      APPLICATION_MODE: edge

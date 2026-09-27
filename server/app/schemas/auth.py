@@ -46,6 +46,7 @@ class UserRead(UserFields):
 
 
 class Me(BaseModel):
+    application_mode: str = "standalone"
     id: int
     username: str
     role: Role

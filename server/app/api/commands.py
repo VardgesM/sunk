@@ -57,6 +57,10 @@ async def request_command(
         validate_write(tag, device, connection, payload.value)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
+    if request.app.state.settings.application_mode == "cloud":
+        from app.sync.remote import queue_command
+
+        return await queue_command(session, request, payload, tag, device, connection)
     worker = await session.get(WorkerRuntime, 1)
     if not worker_alive(worker) or worker.mode not in ("simulator", "modbus"):
         raise HTTPException(503, "An active telemetry worker is required")
@@ -123,12 +127,16 @@ async def read_command(identifier: Identifier, session: Session) -> CommandRead:
 
 
 @router.post("/commands/{identifier}/cancel", response_model=CommandRead)
-async def cancel_command(identifier: Identifier, session: Session) -> CommandRead:
+async def cancel_command(identifier: Identifier, request: Request, session: Session) -> CommandRead:
     command = await session.scalar(
         select(Command).where(Command.id == identifier).with_for_update()
     )
     if command is None:
         raise HTTPException(404, "Command not found")
+    if request.app.state.settings.application_mode == "cloud":
+        raise HTTPException(
+            409, "Remote requests cannot be cancelled after delivery; use short expiry"
+        )
     if command.status != "QUEUED":
         raise HTTPException(
             409, "Only QUEUED commands can be cancelled; a physical action cannot be undone"

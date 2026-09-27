@@ -18,6 +18,8 @@ async def main() -> None:
     api_port, ui_port, pg_port = free_port(), free_port(), free_port()
     env = {
         **os.environ,
+        "APPLICATION_MODE": "standalone",
+        "EDGE_INSTALLATION_ID": "",
         "TELEGRAM_ENABLED": "false",
         "TELEGRAM_BOT_TOKEN": "",
         "AUTH_COOKIE_SECURE": "false",

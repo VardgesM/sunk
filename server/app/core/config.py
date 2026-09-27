@@ -10,6 +10,17 @@ from sqlalchemy import URL
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
+    application_mode: Literal["standalone", "edge", "cloud"] = "standalone"
+    edge_installation_id: str | None = None
+    sync_cloud_url: str = ""
+    sync_token: SecretStr = SecretStr("")
+    sync_allow_insecure_http: bool = False  # Isolated local integration only.
+    sync_interval_seconds: float = Field(default=2, ge=0.1, le=300)
+    sync_batch_size: int = Field(default=100, ge=6, le=500)
+    sync_timeout_seconds: float = Field(default=10, ge=1, le=30)
+    sync_backoff_max_seconds: float = Field(default=60, ge=1, le=600)
+    remote_command_max_age_seconds: int = Field(default=60, ge=1, le=300)
+
     auth_cookie_secure: bool = False  # Local HTTP development; enable with HTTPS deployment.
     auth_session_hours: int = Field(default=8, ge=1, le=168)
     auth_login_attempts: int = Field(default=10, ge=3, le=100)
@@ -48,6 +59,11 @@ class Settings(BaseSettings):
     serial_scan_seconds: float = Field(default=5, ge=1, le=300)
     serial_probe_budget_seconds: float = Field(default=10, ge=1, le=30)
     worker_max_parallel_connections: int = Field(default=32, ge=1, le=256)
+
+    @field_validator("edge_installation_id", mode="before")
+    @classmethod
+    def empty_installation(cls, value: object) -> object:
+        return None if value == "" else value
 
     @field_validator("telemetry_source", mode="before")
     @classmethod

@@ -1,4 +1,4 @@
-export const commandStatuses = ['QUEUED', 'EXECUTING', 'VERIFYING', 'SUCCESS', 'FAILED', 'CANCELLED', 'EXPIRED'] as const;
+export const commandStatuses = ['PENDING_EDGE', 'DELIVERED', 'QUEUED', 'EXECUTING', 'VERIFYING', 'SUCCESS', 'FAILED', 'CANCELLED', 'EXPIRED'] as const;
 export type CommandStatus = typeof commandStatuses[number];
 export interface Command {
   requested_by?: number | null; requested_by_username?: string | null;
@@ -23,4 +23,4 @@ export function isCommand(value: unknown): value is Command {
     && Number.isInteger(row.attempt_count);
 }
 export const commandValue = (value: Command['verified_value']) => value === null ? 'Not available' : typeof value === 'boolean' ? (value ? 'ON' : 'OFF') : value.replace(/(\.\d*?[1-9])0+$|\.0+$/, '$1');
-export const activeCommand = (command?: Command) => !!command && ['QUEUED', 'EXECUTING', 'VERIFYING'].includes(command.status);
+export const activeCommand = (command?: Command) => !!command && ['PENDING_EDGE', 'DELIVERED', 'QUEUED', 'EXECUTING', 'VERIFYING'].includes(command.status);

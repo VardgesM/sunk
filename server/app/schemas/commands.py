@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_valid
 from app.schemas.telemetry import utc
 
 CommandStatus = Literal[
-    "QUEUED", "EXECUTING", "VERIFYING", "SUCCESS", "FAILED", "CANCELLED", "EXPIRED"
+    "PENDING_EDGE", "DELIVERED", "QUEUED", "EXECUTING", "VERIFYING", "SUCCESS", "FAILED", "CANCELLED", "EXPIRED"
 ]
 
 

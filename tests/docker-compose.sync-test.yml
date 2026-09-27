@@ -1,0 +1,113 @@
+# Disposable two-database integration ONLY. No physical devices or Telegram.
+x-environment: &environment
+  POSTGRES_USER: sync_test
+  POSTGRES_PASSWORD: ${SYNC_TEST_DB_PASSWORD:?required}
+  POSTGRES_DB: sync_test
+  TELEMETRY_SOURCE: disabled
+  SIMULATOR_ENABLED: "false"
+  MODBUS_WRITES_ENABLED: "false"
+  TELEGRAM_ENABLED: "false"
+  TELEGRAM_BOT_TOKEN: ""
+  AUTH_COOKIE_SECURE: "false"
+  WORKER_CONFIG_REFRESH_SECONDS: "0.2"
+  SIMULATOR_FAILURE_PROBABILITY: "0"
+services:
+  cloud-postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: sync_test
+      POSTGRES_PASSWORD: ${SYNC_TEST_DB_PASSWORD:?required}
+      POSTGRES_DB: sync_test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sync_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    volumes: [cloud-data:/var/lib/postgresql/data]
+  edge-postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: sync_test
+      POSTGRES_PASSWORD: ${SYNC_TEST_DB_PASSWORD:?required}
+      POSTGRES_DB: sync_test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sync_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    volumes: [edge-data:/var/lib/postgresql/data]
+  cloud-api:
+    image: modbus-monitor-api
+    environment:
+      <<: *environment
+      APPLICATION_MODE: cloud
+      POSTGRES_HOST: cloud-postgres
+      CORS_ORIGINS: ${SYNC_TEST_CORS:?required}
+    command: ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000"]
+    depends_on:
+      cloud-postgres: {condition: service_healthy}
+    ports: ["127.0.0.1:${SYNC_TEST_CLOUD_PORT:?required}:8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health/db')"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+  edge-api:
+    image: modbus-monitor-api
+    environment:
+      <<: *environment
+      APPLICATION_MODE: edge
+      POSTGRES_HOST: edge-postgres
+      EDGE_INSTALLATION_ID: ${SYNC_TEST_EDGE_ID:?required}
+    command: ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000"]
+    depends_on:
+      edge-postgres: {condition: service_healthy}
+    ports: ["127.0.0.1:${SYNC_TEST_EDGE_PORT:?required}:8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health/db')"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+  edge-worker:
+    image: modbus-monitor-worker
+    environment:
+      <<: *environment
+      APPLICATION_MODE: edge
+      POSTGRES_HOST: edge-postgres
+      EDGE_INSTALLATION_ID: ${SYNC_TEST_EDGE_ID:?required}
+      TELEMETRY_SOURCE: simulator
+    command: ["python", "-m", "app.worker"]
+    depends_on:
+      edge-api: {condition: service_healthy}
+  edge-sync:
+    image: modbus-monitor-api
+    environment:
+      <<: *environment
+      APPLICATION_MODE: edge
+      POSTGRES_HOST: edge-postgres
+      EDGE_INSTALLATION_ID: ${SYNC_TEST_EDGE_ID:?required}
+      SYNC_CLOUD_URL: http://cloud-api:8000
+      SYNC_TOKEN: ${SYNC_TEST_TOKEN:?required}
+      SYNC_ALLOW_INSECURE_HTTP: "true"
+      SYNC_INTERVAL_SECONDS: "0.2"
+      SYNC_BATCH_SIZE: "500"
+      SYNC_BACKOFF_MAX_SECONDS: "2"
+    command: ["python", "-m", "app.sync"]
+    depends_on:
+      edge-api: {condition: service_healthy}
+      cloud-api: {condition: service_healthy}
+  cloud-frontend:
+    image: modbus-monitor-frontend
+    environment:
+      API_PROXY_TARGET: http://cloud-api:8000
+    depends_on:
+      cloud-api: {condition: service_healthy}
+    ports: ["127.0.0.1:${SYNC_TEST_UI_PORT:?required}:5173"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5173').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+volumes:
+  edge-data:
+  cloud-data:

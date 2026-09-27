@@ -1,6 +1,7 @@
 import { request } from './client';
 
-export interface SystemRuntime { writes_enabled?: boolean; mode: 'disabled' | 'simulator' | 'modbus' | 'unknown'; alive: boolean; hostname: string | null; heartbeat_at: string | null }
+export interface SystemRuntime {
+  application_mode?: 'standalone' | 'edge' | 'cloud'; writes_enabled?: boolean; mode: 'disabled' | 'simulator' | 'modbus' | 'unknown'; alive: boolean; hostname: string | null; heartbeat_at: string | null }
 export interface TransportStatus { detected_port?: string | null; detection_status?: string | null; detected_at?: string | null; detection_error?: string | null; redetect_pending?: boolean; connection_id: number; state: string; last_success: string | null; last_error: string | null; last_error_at: string | null; updated_at: string | null }
 export interface DeviceStatus { device_id: number; state: string; last_success: string | null }
 export interface TestResult { test_id: string | null; state: 'NOT_REQUESTED' | 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'EXPIRED'; success: boolean | null; message: string | null; latency_ms: number | null }

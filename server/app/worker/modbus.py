@@ -81,6 +81,8 @@ class ConnectionManager:
         factory: Callable[[Transport], Any] = create_client,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
+        if settings.application_mode == "cloud":
+            raise RuntimeError("Cloud is forbidden from opening Modbus transports")
         self.settings, self.factory, self.clock = settings, factory, clock
         self.entries: dict[int, ClientState] = {}
         self.conflicts: set[int] = set()

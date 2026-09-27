@@ -291,10 +291,15 @@ def test_all_http_api_routes_have_authorization():
 
     app = create_app(Settings(postgres_password="test"))
     for route in app.routes:
+        if isinstance(route, APIRoute) and route.path.startswith("/api/sync/v1/"):
+            from app.api.sync import machine
+
+            assert any(dependency.call is machine for dependency in route.dependant.dependencies)
         if (
             isinstance(route, APIRoute)
             and route.path.startswith("/api/")
             and route.path != "/api/auth/login"
+            and not route.path.startswith("/api/sync/v1/")
         ):
             assert any(
                 dependency.call is authorize for dependency in route.dependant.dependencies

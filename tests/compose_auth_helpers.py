@@ -6,12 +6,12 @@ import secrets
 import subprocess
 
 
-async def bootstrap_login(prefix, environment, api) -> tuple[str, str]:
+async def bootstrap_login(prefix, environment, api, service="api") -> tuple[str, str]:
     username, password = "integration_admin", secrets.token_urlsafe(24)
     code = "import asyncio,json,sys; from app.bootstrap import bootstrap; asyncio.run(bootstrap(*json.load(sys.stdin)))"
     result = await asyncio.to_thread(
         subprocess.run,
-        [*prefix, "exec", "-T", "api", "python", "-c", code],
+        [*prefix, "exec", "-T", service, "python", "-c", code],
         input=json.dumps([username, password]),
         env=environment,
         capture_output=True,

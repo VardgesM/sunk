@@ -245,3 +245,7 @@ Deleting a user first revokes their sessions, then retains audit/command/alarm h
 references and preserved usernames. Last enabled ADMIN checks run under the shared PostgreSQL lock.
 Upgrade/downgrade use a new revision; older migrations are unchanged. Downgrading removes authentication
 and attribution tables/columns, so back up retained audit information before an intentional downgrade.
+
+## Phase 11 sync schema ? migration 0012_edge_cloud
+
+`sync_state` persists database role/installation identity and sync health. `sync_outbox` stores UUID events, priority, payload and retry time. `edge_installations` stores enabled machine identities and token digests. `sync_receipts` deduplicates events per Edge. `sync_mappings` maps stable UUID identities/source keys to Cloud keys and monotonic source sequences. `remote_requests` tracks Cloud user attribution and expiring correlated command/acknowledgement delivery; `remote_inbox` deduplicates Edge processing. Restrictive FKs preserve history; Cloud user references become NULL on deletion while attribution snapshots remain. Existing commands add PENDING_EDGE/DELIVERED. Users/password hashes never mirror. See [sync lifecycle](edge-cloud.md).

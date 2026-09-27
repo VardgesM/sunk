@@ -468,3 +468,7 @@ Automated full-stack verification uses isolated databases and generated test cre
 
 It checks all three roles, browser login/logout, simulator commands, alarm acknowledgement, audit,
 WebSocket revocation and mobile layouts. It does not operate physical outputs or send Telegram messages.
+
+## Phase 11: Edge / Cloud
+
+Standalone remains the default. Edge keeps all equipment access and safety local; an independent durable sync process uploads batches to Cloud over HTTPS. Cloud reuses authenticated dashboards, history, alarms and the verified command pipeline. See [Edge/Cloud setup and safety](docs/edge-cloud.md) for exact Compose/native Windows commands, machine enrollment, migration `0012_edge_cloud`, offline recovery and testing. Do not expose PostgreSQL publicly.

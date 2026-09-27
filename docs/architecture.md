@@ -233,3 +233,7 @@ Worker telemetry, Automation, notifications and persistent command processing st
 PostgreSQL workflows with no interactive session. Manual command requests carry the authenticated
 user's ID and username snapshot; automation commands keep their existing source and no fabricated user.
 Audit writes commit with API mutations. See [security](security.md) for the complete boundary and setup.
+
+## Edge / Cloud
+
+Phase 11 adds standalone/edge/cloud modes, a separate Edge sync process and application-level store-and-forward. Edge PostgreSQL transaction triggers produce durable outbox events; Cloud applies idempotent native relational mirrors and publishes existing browser notifications. Remote requests return through a durable inbox and the existing Command processor. No Cloud dependency is introduced into polling or Automation. See [deployment/protocol details](edge-cloud.md).

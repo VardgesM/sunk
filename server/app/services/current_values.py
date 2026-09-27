@@ -161,7 +161,13 @@ def is_stale(
     )
 
 
-async def mark_stale(session: AsyncSession, multiplier: float, now: datetime | None = None) -> int:
+async def mark_stale(
+    session: AsyncSession,
+    multiplier: float,
+    now: datetime | None = None,
+    *,
+    write_history: bool = True,
+) -> int:
     """Compare-and-set protects a newer GOOD reading against a concurrent stale sweep."""
     now = now or datetime.now(UTC)
     rows = (
@@ -191,7 +197,8 @@ async def mark_stale(session: AsyncSession, multiplier: float, now: datetime | N
             )
         )
         if result.rowcount:
-            await try_write_history(session, identifier, "STALE", {}, now)
+            if write_history:
+                await try_write_history(session, identifier, "STALE", {}, now)
             await notify_current(session, identifier)
             changed += 1
     return changed

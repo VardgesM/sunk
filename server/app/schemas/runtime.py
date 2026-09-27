@@ -18,6 +18,7 @@ class PortRead(BaseModel):
 
 
 class SystemRuntime(BaseModel):
+    application_mode: str = "standalone"
     mode: Literal["disabled", "simulator", "modbus", "unknown"]
     alive: bool
     writes_enabled: bool = False

@@ -43,6 +43,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         configure_logging(config.log_level)
         app.state.database = Database(config)
         app.state.settings = config
+        if config.application_mode != "standalone":
+            from app.sync.state import initialize
+
+            await initialize(app.state.database, config)
         app.state.live_hub = LiveHub()
         tasks = []
         if config.live_updates_enabled:
@@ -53,6 +57,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 asyncio.create_task(listener.run()),
                 asyncio.create_task(stale_loop(app.state.database, config)),
             ]
+        if config.application_mode == "cloud":
+            from app.sync.runtime import maintenance
+
+            tasks.append(asyncio.create_task(maintenance(app.state.database, config)))
         logger.info("API starting")
         try:
             yield
@@ -63,10 +71,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await app.state.database.close()
             logger.info("API stopped")
 
+    from app.api import sync
+
     app = FastAPI(title="Modbus Monitor API", version="0.1.0", lifespan=lifespan)
     app.include_router(router, dependencies=[Depends(authorize)])
     # Static /tags/values must precede the existing /tags/{identifier} route.
     app.include_router(current_values.router, dependencies=[Depends(authorize)])
+    app.include_router(sync.machine_router)
+    app.include_router(sync.router, dependencies=[Depends(authorize)])
     app.include_router(auth.router)
     app.include_router(users.router, dependencies=[Depends(authorize)])
     app.include_router(live.router)

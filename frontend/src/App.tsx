@@ -8,8 +8,9 @@ import MenuIcon from '@mui/icons-material/Menu';
 import AlarmIndicator from './components/AlarmIndicator';
 import HealthStatus from './components/HealthStatus';
 import { SourceMode } from './components/RuntimeStatus';
-import PlaceholderPage from './pages/PlaceholderPage';
 
+
+const SystemPage = lazy(() => import('./pages/SystemPage'));
 const UsersPage = lazy(() => import('./pages/UsersPage'));
 const AuditPage = lazy(() => import('./pages/AuditPage'));
 const DashboardsPage = lazy(() => import('./pages/DashboardsPage'));
@@ -27,7 +28,7 @@ const drawerWidth = 240;
 const pages = ['Dashboard', 'Locations', 'Connections', 'Devices', 'Tags', 'Commands', 'Automation', 'Alarms', 'Users', 'Audit', 'Settings'];
 
 export default function App() {
-  const admin = usePermission('configure');
+  const admin = usePermission('users');
   const [open, setOpen] = useState(false);
   const location = useLocation();
   const navigation = (
@@ -35,7 +36,7 @@ export default function App() {
       <Toolbar><Typography fontWeight={700}>MODBUS MONITOR</Typography></Toolbar>
       <Divider />
       <List sx={{ px: 1 }}>
-        {pages.filter(page => admin || !['Users','Audit','Settings'].includes(page)).map((page) => (
+        {pages.filter(page => admin || !['Users','Audit'].includes(page)).map((page) => (
           <ListItemButton key={page} component={Link} to={`/${page.toLowerCase()}`}
             selected={location.pathname === `/${page.toLowerCase()}`}
             aria-current={location.pathname === `/${page.toLowerCase()}` ? 'page' : undefined}
@@ -79,7 +80,7 @@ export default function App() {
           <Route path="/commands" element={<CommandsPage />} />
           <Route path="/tags" element={<TagsPage />} />
           <Route path="/tags/:id" element={<TagDetailsPage key={location.pathname} />} />
-          {['Settings'].map((page) => <Route key={page} path={`/${page.toLowerCase()}`} element={<PlaceholderPage title={page} />} />)}
+          {['Settings'].map((page) => <Route key={page} path={`/${page.toLowerCase()}`} element={<SystemPage />} />)}
           <Route path="*" element={<Typography component="h1">Page not found</Typography>} />
         </Routes>
         </Suspense>

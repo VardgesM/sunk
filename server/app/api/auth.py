@@ -115,13 +115,13 @@ async def login(payload: Login, request: Request, response: Response, session: S
             samesite="strict",
         )
     response.headers["Cache-Control"] = "no-store"
-    return me(user)
+    return me(user, config.application_mode)
 
 
 @router.get("/me", response_model=Me, dependencies=[Depends(authorize)])
 async def current_user(request: Request, response: Response) -> Me:
     response.headers["Cache-Control"] = "no-store"
-    return me(request.state.user)
+    return me(request.state.user, request.app.state.settings.application_mode)
 
 
 @router.post("/logout", status_code=204, dependencies=[Depends(authorize)])

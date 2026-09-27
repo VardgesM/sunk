@@ -6,6 +6,7 @@ import { redetectConnection, getTest, testConnection, type DeviceStatus, type Sy
 
 export function SourceMode() {
   const { data, error } = useRuntime<SystemRuntime>('/system/runtime');
+  if (data?.application_mode === 'cloud') return <Alert severity="info" sx={{ mb: 2 }}>CLOUD ? remote monitoring. Equipment is controlled only by its Edge.</Alert>;
   if (!data || error || !data.alive) return <Alert severity="warning" sx={{ mb: 2 }}>Telemetry worker unavailable — source mode unknown</Alert>;
   if (data.mode === 'simulator') return <Alert severity="warning" sx={{ mb: 2 }}>SIMULATION MODE — development values, no device communication</Alert>;
   if (data.mode === 'disabled') return <Alert severity="info" sx={{ mb: 2 }}>Telemetry collection is disabled</Alert>;

@@ -13,6 +13,7 @@ dependencies = [
   "pymodbus[serial]==3.13.1",
   "tzdata>=2025.1",
   "argon2-cffi>=25.1,<26",
+  "httpx>=0.28,<1",
 ]
 
 [project.optional-dependencies]

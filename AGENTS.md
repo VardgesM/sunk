@@ -63,3 +63,9 @@
 - Frontend permission checks are UX only.
 - Passwords and authentication secrets must never be logged or returned by APIs.
 - Automation and worker operations must not depend on interactive user sessions.
+
+- Cloud must never communicate directly with Modbus.
+- Loss of Cloud connectivity must never stop local Automation.
+- Remote physical actions must use the existing persistent Command pipeline.
+- PostgreSQL must never be exposed publicly for Edge/Cloud synchronization.
+- Synchronization must exclude users, password hashes, sessions and notification secrets.

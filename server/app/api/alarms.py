@@ -169,6 +169,12 @@ async def acknowledge(identifier: Identifier, request: Request, session: Session
         raise HTTPException(404, "Alarm event not found")
     if event.state != "ACTIVE":
         raise HTTPException(409, "Only an ACTIVE alarm can be acknowledged")
+    if request.app.state.settings.application_mode == "cloud":
+        from app.sync.remote import queue_acknowledgement
+
+        await queue_acknowledgement(session, request, event)
+        # Actual alarm stays ACTIVE until Edge acknowledges; UI shows pending delivery separately.
+        return EventRead.model_validate(event)
     event.acknowledged_by = request.state.user.id
     event.acknowledged_by_username = request.state.user.username
     event.state, event.acknowledged_at = "ACKNOWLEDGED", datetime.now(UTC)

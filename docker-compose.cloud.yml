@@ -1,0 +1,15 @@
+# docker compose -f docker-compose.yml -f docker-compose.cloud.yml up --build -d
+# No worker service is started in Cloud. PostgreSQL remains localhost-only.
+services:
+  api:
+    environment:
+      APPLICATION_MODE: cloud
+      TELEMETRY_SOURCE: disabled
+      SIMULATOR_ENABLED: "false"
+      MODBUS_WRITES_ENABLED: "false"
+  worker:
+    profiles: [never-cloud]
+    environment:
+      APPLICATION_MODE: cloud
+  sync:
+    profiles: [never-cloud]

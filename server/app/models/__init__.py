@@ -19,6 +19,15 @@ from app.models.dashboards import (
 )
 from app.models.history import TagHistory
 from app.models.runtime import ConnectionRuntime, WorkerRuntime
+from app.models.sync import (
+    EdgeInstallation,
+    RemoteInbox,
+    RemoteRequest,
+    SyncMapping,
+    SyncOutbox,
+    SyncReceipt,
+    SyncState,
+)
 
 __all__ = [
     "Command",
@@ -63,3 +72,14 @@ __all__ += [
 __all__ += ["Dashboard", "DashboardWidget", "DashboardWidgetTag", "DashboardWidgetLayout"]
 
 __all__ += ["User", "AuthSession", "LoginLimit", "AuditLog"]
+
+
+__all__ += [
+    "SyncState",
+    "EdgeInstallation",
+    "SyncOutbox",
+    "SyncReceipt",
+    "SyncMapping",
+    "RemoteRequest",
+    "RemoteInbox",
+]

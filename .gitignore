@@ -1,4 +1,6 @@
 .env
+.env.*
+!.env.example
 compose.rtu.local.yml
 .venv/
 __pycache__/

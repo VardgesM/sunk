@@ -11,7 +11,7 @@ class Command(Base):
     __tablename__ = "commands"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('QUEUED','EXECUTING','VERIFYING','SUCCESS','FAILED','CANCELLED','EXPIRED')",
+            "status IN ('PENDING_EDGE','DELIVERED','QUEUED','EXECUTING','VERIFYING','SUCCESS','FAILED','CANCELLED','EXPIRED')",
             name="status",
         ),
         CheckConstraint("source IN ('manual','automation','system')", name="source"),

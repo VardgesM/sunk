@@ -42,9 +42,13 @@ def verify_password(encoded: str, value: str) -> bool:
         return False
 
 
-def me(user: User) -> Me:
+def me(user: User, mode: str = "standalone") -> Me:
     return Me(
-        id=user.id, username=user.username, role=user.role, permissions=PERMISSIONS[user.role]
+        id=user.id,
+        username=user.username,
+        role=user.role,
+        permissions=[p for p in PERMISSIONS[user.role] if mode != "cloud" or p != "configure"],
+        application_mode=mode,
     )
 
 
@@ -118,6 +122,19 @@ async def authorize(request: Request, session: AsyncSession = Depends(get_sessio
     user, login = identity
     if required_permission(request.method, request.url.path) not in PERMISSIONS[user.role]:
         raise HTTPException(403, "Permission denied")
+    if request.app.state.settings.application_mode == "cloud" and request.method not in (
+        "GET",
+        "HEAD",
+        "OPTIONS",
+    ):
+        path = request.url.path
+        allowed = path.startswith(
+            ("/api/auth/", "/api/users", "/api/sync/installations")
+        ) or required_permission(request.method, path) in ("command", "acknowledge")
+        if not allowed:
+            raise HTTPException(
+                409, "Configuration is authoritative on Edge; Cloud views are read-only"
+            )
     if request.method not in ("GET", "HEAD", "OPTIONS"):
         origin_check(request)
         token = request.headers.get("x-csrf-token", "")

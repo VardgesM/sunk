@@ -35,7 +35,13 @@ async def heartbeat(database: Database, settings: Settings, stop: asyncio.Event)
 
 
 async def run(settings: Settings, stop: asyncio.Event) -> None:
+    if settings.application_mode == "cloud":
+        raise RuntimeError("Cloud must never run the Modbus/Automation worker")
     database = Database(settings)
+    if settings.application_mode == "edge":
+        from app.sync.state import initialize
+
+        await initialize(database, settings)
     manager = ConnectionManager(settings) if settings.source_mode == "modbus" else None
     source = (
         SimulatorSource(settings.simulator_failure_probability)
@@ -75,6 +81,8 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
 
 async def main() -> None:
     settings = get_settings()
+    if settings.application_mode == "cloud":
+        raise RuntimeError("Cloud cannot start a transport worker")
     configure_logging(settings.log_level)
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
@@ -86,6 +94,11 @@ async def main() -> None:
         while not stop.is_set():
             try:
                 async with worker_lease(settings) as connection:
+                    database_mode = await connection.fetchval(
+                        "SELECT mode FROM sync_state WHERE id=1"
+                    )
+                    if database_mode == "cloud":
+                        raise RuntimeError("Cloud database cannot run a transport worker")
                     collection = asyncio.create_task(run(settings, stop))
                     ownership = asyncio.create_task(watch_lease(connection))
                     try:

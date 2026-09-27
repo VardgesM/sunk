@@ -1,0 +1,21 @@
+import { useEffect, useState } from 'react';
+import { Alert, Button, Stack, TextField, Typography } from '@mui/material';
+import { request } from '../api/client';
+import { usePermission } from '../auth/context';
+interface SyncStatus { mode: string; installation_id: string | null; pending: number; last_sync_at: string | null; error: string | null; edges: {id:string;name:string;enabled:boolean;state:string;mode:string;last_seen_at:string|null}[] }
+interface Delivery {id:string;kind:string;status:string;username:string;expires_at:string;error:string|null}
+export default function SystemPage() {
+  const [now,setNow]=useState(0);
+  const [status,setStatus]=useState<SyncStatus>(),[rows,setRows]=useState<Delivery[]>([]),[error,setError]=useState('');
+  const [id,setId]=useState(''),[name,setName]=useState(''),[token,setToken]=useState(''),[busy,setBusy]=useState(false);
+  const admin=usePermission('users');
+  useEffect(()=>{let active=true;async function refresh(){try{const s=await request<SyncStatus>('/sync/status');const r=s.mode==='cloud'?await request<Delivery[]>('/sync/requests'):[];if(active){setStatus(s);setRows(r);setNow(Date.now());setError('');}}catch(e){if(active)setError(String(e));}}void refresh();const timer=setInterval(()=>void refresh(),5000);return()=>{active=false;clearInterval(timer);};},[]);
+  return <Stack spacing={2}><Typography variant="h4" component="h1">System / Synchronization</Typography>{error&&<Alert severity="error">{error}</Alert>}
+    {!status&&<Typography>Loading sync status...</Typography>}{status&&<><Typography>Mode: {status.mode}</Typography>
+    {status.mode==='standalone'?<Typography>Local standalone operation. Cloud synchronization is disabled.</Typography>:status.mode==='edge'?<><Typography>Installation: {status.installation_id}</Typography><Typography>Cloud: {status.error?'UNAVAILABLE':status.last_sync_at&&now-Date.parse(status.last_sync_at)<30000?'CONNECTED':'DISCONNECTED'}</Typography><Typography>Pending sync: {status.pending}</Typography><Typography>Last sync: {status.last_sync_at?new Date(status.last_sync_at).toLocaleString():'Never'}</Typography>{status.error&&<Alert severity="warning">{status.error}</Alert>}</>:<>
+    {status.edges.length===0&&<Typography>No Edge installations registered.</Typography>}{status.edges.map(edge=><Stack key={edge.id} sx={{border:1,borderColor:'divider',p:2}}><Typography>{edge.name}: {edge.state}</Typography><Typography>Source: {edge.mode}</Typography><Typography>{edge.id}</Typography><Typography>Last seen: {edge.last_seen_at?new Date(edge.last_seen_at).toLocaleString():'Never'}</Typography></Stack>)}
+    {admin&&<Stack component="form" spacing={1} onSubmit={e=>{e.preventDefault();setBusy(true);void request('/sync/installations',{method:'POST',body:JSON.stringify({id,name,token,enabled:true})}).then(()=>{setToken('');setError('Registered. Status will refresh shortly.');}).catch(e=>setError(String(e))).finally(()=>setBusy(false));}}><Typography variant="h6">Register Edge / rotate machine credential</Typography><TextField required label="Installation UUID" value={id} onChange={e=>setId(e.target.value)}/><TextField required label="Edge name" value={name} onChange={e=>setName(e.target.value)}/><TextField required type="password" autoComplete="new-password" label="Machine token" helperText="Use the same independently generated token in Edge SYNC_TOKEN (at least 32 characters). Never an Admin password." value={token} onChange={e=>setToken(e.target.value)}/><Button type="submit" disabled={busy||token.length<32}>Register / rotate</Button></Stack>}
+    <Typography variant="h6">Remote delivery history</Typography>{rows.map(row=><Stack key={row.id}><Typography>{row.kind}: {row.status} ? {row.username}</Typography><Typography variant="caption">{row.id} ? Expires {new Date(row.expires_at).toLocaleString()}</Typography>{row.error&&<Alert severity="warning">{row.error}</Alert>}</Stack>)}
+    </> }</>}
+  </Stack>;
+}
