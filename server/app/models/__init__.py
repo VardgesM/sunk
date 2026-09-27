@@ -7,6 +7,7 @@ from app.models.alarms import (
     NotificationDelivery,
     TelegramDestination,
 )
+from app.models.auth import AuditLog, AuthSession, LoginLimit, User
 from app.models.command import Command
 from app.models.configuration import Connection, Device, Location, Tag
 from app.models.current_value import TagCurrentValue
@@ -60,3 +61,5 @@ __all__ += [
 
 
 __all__ += ["Dashboard", "DashboardWidget", "DashboardWidgetTag", "DashboardWidgetLayout"]
+
+__all__ += ["User", "AuthSession", "LoginLimit", "AuditLog"]

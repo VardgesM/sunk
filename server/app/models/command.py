@@ -46,6 +46,8 @@ class Command(Base):
         Index("ix_commands_tag_created_at", "tag_id", "created_at"),
     )
     id: Mapped[int] = mapped_column(primary_key=True)
+    requested_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    requested_by_username: Mapped[str | None] = mapped_column(String(64))
     request_id: Mapped[str] = mapped_column(String(36), unique=True)
     tag_id: Mapped[int] = mapped_column(ForeignKey("tags.id", ondelete="RESTRICT"))
     requested_numeric: Mapped[Decimal | None] = mapped_column(Numeric())

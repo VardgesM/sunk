@@ -7,6 +7,7 @@ export interface AlarmInput {
 }
 export interface AlarmRule extends AlarmInput { id: number; created_at: string; updated_at: string }
 export interface AlarmEvent {
+  acknowledged_by?: number | null; acknowledged_by_username?: string | null;
   id: number; rule_id: number; tag_id: number; name: string; tag_name: string;
   unit: string | null; condition: string; severity: Severity;
   state: 'ACTIVE' | 'ACKNOWLEDGED' | 'CLEARED'; value_numeric: string | null;

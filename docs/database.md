@@ -180,8 +180,8 @@ tag+created and creation time. No JSON value/configuration blobs or runtime enti
 The worker flag is derived process state, not an API-editable configuration switch. Downgrade removes
 command records and the runtime flag; previous migrations remain unchanged.
 
-See [command protocol](commands.md). Source supports manual/automation/system in storage, but this
-phase's API and processor accept manual only. Command records do not claim authenticated attribution.
+See [command protocol](commands.md). Source supports manual/automation/system in storage. Phase 7 adds Automation commands; Phase 10
+attributes manual requests to authenticated users. Interactive APIs cannot impersonate Automation.
 
 ## Phase 7 Automation
 
@@ -224,3 +224,24 @@ with explicit ports. Older migrations are not changed.
 ## Phase 9 dashboard configuration
 
 Migration `0010_dashboards` adds `dashboards`, `dashboard_widgets`, `dashboard_widget_tags` and `dashboard_widget_layouts`. Slugs are unique; a partial unique index enforces one default. Bindings have restrictive Tag FKs and ordered multi-Tag support. Responsive layout is stored in integer columns per breakpoint, with bounds constraints; only type-specific settings use validated JSON. Dashboard revision detects stale layout saves. Deletion explicitly removes dashboard-owned rows without deleting external entities. See [details and API](dashboards.md).
+
+
+## Phase 10: users, sessions and attribution
+
+Migration `0011_auth` adds:
+
+- `users`: unique normalized username, Argon2id password hash, checked ADMIN/OPERATOR/VIEWER role,
+  enabled flag, UTC created/updated and last login timestamps.
+- `auth_sessions`: SHA-256 digest of a random opaque session token as primary key, CSRF digest,
+  restrictive User FK, creation and indexed expiry. Plain session tokens are never stored.
+- `login_limits`: hashed IP/username buckets, window start and failure count. Expired buckets are
+  removed during login. A transaction advisory lock serializes login/account changes across API processes.
+- `audit_log`: immutable-by-API action, entity type/ID, safe summary, UTC timestamp, nullable User FK
+  (`SET NULL`) and username snapshot. User/action/time indexes support bounded paginated queries.
+- `commands.requested_by` and `alarm_events.acknowledged_by`: indexed nullable User FKs (`SET NULL`)
+  plus username snapshots. Legacy and Automation records remain valid with null human attribution.
+
+Deleting a user first revokes their sessions, then retains audit/command/alarm history with null user
+references and preserved usernames. Last enabled ADMIN checks run under the shared PostgreSQL lock.
+Upgrade/downgrade use a new revision; older migrations are unchanged. Downgrading removes authentication
+and attribution tables/columns, so back up retained audit information before an intentional downgrade.

@@ -1,3 +1,4 @@
+import Can from '../auth/Can';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, Checkbox, MenuItem, Paper, Snackbar, Stack, TextField, Typography } from '@mui/material';
 import { Responsive, useContainerWidth, type ResponsiveLayouts } from 'react-grid-layout';
@@ -26,7 +27,7 @@ function DashboardForm({ initial, onSave, onClose }: { initial?: Dashboard; onSa
     <TextField label="Slug" value={form.slug} onChange={e => setForm({ ...form, slug: e.target.value })} helperText="Lowercase letters, numbers and hyphens. Must be unique." required />
     <TextField label="Description" multiline value={form.description ?? ''} onChange={e => setForm({ ...form, description: e.target.value || null })} />
     <FormControlLabel label="Default dashboard" control={<Checkbox checked={form.is_default} onChange={e => setForm({ ...form, is_default: e.target.checked })} />} />
-  </Stack></DialogContent><DialogActions><Button disabled={busy} onClick={onClose}>Cancel</Button><Button disabled={busy || !form.name.trim() || !form.slug.trim()} onClick={() => void save()}>Save dashboard</Button></DialogActions></Dialog>;
+  </Stack></DialogContent><DialogActions><Button disabled={busy} onClick={onClose}>Cancel</Button><Can permission="configure"><Button disabled={busy || !form.name.trim() || !form.slug.trim()} onClick={() => void save()}>Save dashboard</Button></Can></DialogActions></Dialog>;
 }
 
 function Canvas({ dashboard, tags, reload, report }: { dashboard: DashboardDetail; tags: Tag[]; reload: () => Promise<void>; report: (message: string) => void }) {
@@ -47,8 +48,8 @@ function Canvas({ dashboard, tags, reload, report }: { dashboard: DashboardDetai
   }
   return <Stack spacing={2}>
     <Stack direction="row" flexWrap="wrap" gap={1}>
-      <Button onClick={() => setEditing(v => !v)} disabled={dirty || busy}>{editing ? 'Finish editing' : 'Edit dashboard layout'}</Button>
-      {editing && <><Button onClick={() => setEditor('new')} disabled={dirty || busy}>Add widget</Button><Button disabled={!dirty || busy} onClick={() => void save()}>Save layout</Button><Button disabled={!dirty || busy} onClick={() => void reload().then(() => setDirty(false)).catch(e => setError(String(e)))}>Discard layout changes</Button></>}
+      <Can permission="configure"><Button onClick={() => setEditing(v => !v)} disabled={dirty || busy}>{editing ? 'Finish editing' : 'Edit dashboard layout'}</Button></Can>
+      {editing && <><Can permission="configure"><Button onClick={() => setEditor('new')} disabled={dirty || busy}>Add widget</Button></Can><Can permission="configure"><Button disabled={!dirty || busy} onClick={() => void save()}>Save layout</Button></Can><Button disabled={!dirty || busy} onClick={() => void reload().then(() => setDirty(false)).catch(e => setError(String(e)))}>Discard layout changes</Button></>}
     </Stack>
     {editing && <Alert severity="info">Drag the widget title to move; use its bottom-right handle to resize. Each screen width has its own layout. Save layout before editing widget settings. Settings and widget removal are saved immediately.</Alert>}
     {dirty && <Typography role="status">Unsaved layout changes</Typography>}
@@ -61,7 +62,7 @@ function Canvas({ dashboard, tags, reload, report }: { dashboard: DashboardDetai
         {dashboard.widgets.map(widget => <Paper key={String(widget.id)} variant="outlined" sx={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
           <Stack className="widget-handle" direction="row" alignItems="center" sx={{ p: 1, bgcolor: 'action.hover', cursor: editing ? 'move' : 'default', touchAction: editing ? 'none' : 'auto' }}>
             <Typography component="h2" fontWeight={700} sx={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>{widget.title}</Typography>
-            {editing && <><Button size="small" disabled={dirty || busy} onClick={() => setEditor(widget)} aria-label={`Edit ${widget.title}`}>Edit</Button><Button size="small" disabled={dirty || busy} onClick={() => setRemove(widget)} aria-label={`Remove ${widget.title}`}>Remove</Button></>}
+            {editing && <><Can permission="configure"><Button size="small" disabled={dirty || busy} onClick={() => setEditor(widget)} aria-label={`Edit ${widget.title}`}>Edit</Button></Can><Can permission="configure"><Button size="small" disabled={dirty || busy} onClick={() => setRemove(widget)} aria-label={`Remove ${widget.title}`}>Remove</Button></Can></>}
           </Stack>
           <Box sx={{ p: 2, minHeight: 0, overflow: 'auto', flex: 1 }}><DashboardWidget widget={widget} tags={tagMap} editing={editing} /></Box>
         </Paper>)}
@@ -71,7 +72,7 @@ function Canvas({ dashboard, tags, reload, report }: { dashboard: DashboardDetai
       if (editor === 'new') await dashboardsApi.addWidget(dashboard.id, value); else await dashboardsApi.editWidget(editor.id, value);
       setEditor(undefined); await reload(); report('Widget saved');
     }} />}
-    <Dialog open={!!remove} onClose={() => setRemove(undefined)}><DialogTitle>Remove widget?</DialogTitle><DialogContent>This removes only the widget. Tags and their data remain unchanged.</DialogContent><DialogActions><Button disabled={busy} onClick={() => setRemove(undefined)}>Cancel</Button><Button disabled={busy} color="error" onClick={() => { if (!remove) return; setBusy(true); void dashboardsApi.removeWidget(remove.id).then(reload).then(() => report('Widget removed')).catch(e => setError(String(e))).finally(() => { setBusy(false); setRemove(undefined); }); }}>Remove widget</Button></DialogActions></Dialog>
+    <Dialog open={!!remove} onClose={() => setRemove(undefined)}><DialogTitle>Remove widget?</DialogTitle><DialogContent>This removes only the widget. Tags and their data remain unchanged.</DialogContent><DialogActions><Can permission="configure"><Button disabled={busy} onClick={() => setRemove(undefined)}>Cancel</Button></Can><Can permission="configure"><Button disabled={busy} color="error" onClick={() => { if (!remove) return; setBusy(true); void dashboardsApi.removeWidget(remove.id).then(reload).then(() => report('Widget removed')).catch(e => setError(String(e))).finally(() => { setBusy(false); setRemove(undefined); }); }}>Remove widget</Button></Can></DialogActions></Dialog>
   </Stack>;
 }
 
@@ -99,7 +100,7 @@ export default function DashboardsPage() {
     setRows(await dashboardsApi.all()); setTags(await tagsApi.all());
   }
   return <Stack spacing={2}>
-    <Stack direction="row" alignItems="center" flexWrap="wrap" gap={2}><Typography variant="h4" component="h1">Dashboards</Typography><LiveConnectionStatus /><Button onClick={() => setForm('new')}>Create dashboard</Button></Stack>
+    <Stack direction="row" alignItems="center" flexWrap="wrap" gap={2}><Typography variant="h4" component="h1">Dashboards</Typography><LiveConnectionStatus /><Can permission="configure"><Button onClick={() => setForm('new')}>Create dashboard</Button></Can></Stack>
     {error && <Alert severity="error" action={<Button onClick={() => setGeneration(v => v + 1)}>Retry</Button>}>{error}</Alert>}
     {!rows && !error && <Typography role="status">Loading dashboards...</Typography>}
     {rows?.length === 0 && <Alert severity="info">No dashboards yet. Create your first dashboard.</Alert>}
@@ -107,14 +108,14 @@ export default function DashboardsPage() {
       <TextField select label="Dashboard" value={selected ?? ''} onChange={e => { setDashboard(undefined); setSelected(Number(e.target.value)); }} sx={{ minWidth: 180 }}>
         {rows.map(row => <MenuItem key={row.id} value={row.id}>{row.name}{row.is_default ? ' (default)' : ''}</MenuItem>)}
       </TextField>
-      {dashboard?.id === selected && <><Button onClick={() => setForm(dashboard)}>Rename / settings</Button><Button color="error" onClick={() => setDeleting(true)}>Delete dashboard</Button><Button onClick={() => void reload().catch(e => setError(String(e)))}>Reload dashboard</Button></>}
+      {dashboard?.id === selected && <><Can permission="configure"><Button onClick={() => setForm(dashboard)}>Rename / settings</Button></Can><Can permission="configure"><Button color="error" onClick={() => setDeleting(true)}>Delete dashboard</Button></Can><Button onClick={() => void reload().catch(e => setError(String(e)))}>Reload dashboard</Button></>}
     </Stack>}
     {dashboard && dashboard.id === selected && tags && <><Typography>{dashboard.description}</Typography><Canvas key={`${dashboard.id}:${generation}`} dashboard={dashboard} tags={tags} reload={reload} report={setMessage} /></>}
     {form && <DashboardForm initial={form === 'new' ? undefined : form} onClose={() => setForm(undefined)} onSave={async value => {
       const result = form === 'new' ? await dashboardsApi.create(value) : await dashboardsApi.edit(form.id,value);
       setForm(undefined); setSelected(result.id); setDashboard(result); setGeneration(v => v + 1); setMessage('Dashboard saved');
     }} />}
-    <Dialog open={deleting} onClose={() => { if (!busy) setDeleting(false); }}><DialogTitle>Delete dashboard?</DialogTitle><DialogContent>All widgets in this dashboard will be removed. Tags, commands and history remain unchanged.</DialogContent><DialogActions><Button disabled={busy} onClick={() => setDeleting(false)}>Cancel</Button><Button disabled={busy} color="error" onClick={() => { if (!selected) return; setBusy(true); void dashboardsApi.remove(selected).then(() => { setDashboard(undefined); setSelected(undefined); setGeneration(v => v + 1); setMessage('Dashboard deleted'); }).catch(e => setError(String(e))).finally(() => { setBusy(false); setDeleting(false); }); }}>Delete permanently</Button></DialogActions></Dialog>
+    <Dialog open={deleting} onClose={() => { if (!busy) setDeleting(false); }}><DialogTitle>Delete dashboard?</DialogTitle><DialogContent>All widgets in this dashboard will be removed. Tags, commands and history remain unchanged.</DialogContent><DialogActions><Can permission="configure"><Button disabled={busy} onClick={() => setDeleting(false)}>Cancel</Button></Can><Can permission="configure"><Button disabled={busy} color="error" onClick={() => { if (!selected) return; setBusy(true); void dashboardsApi.remove(selected).then(() => { setDashboard(undefined); setSelected(undefined); setGeneration(v => v + 1); setMessage('Dashboard deleted'); }).catch(e => setError(String(e))).finally(() => { setBusy(false); setDeleting(false); }); }}>Delete permanently</Button></Can></DialogActions></Dialog>
     <Snackbar open={!!message} autoHideDuration={4000} message={message} onClose={() => setMessage('')} />
   </Stack>;
 }

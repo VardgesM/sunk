@@ -11,6 +11,7 @@ import subprocess
 from uuid import uuid4
 
 import httpx
+from compose_auth_helpers import login_existing, ws_headers
 from sqlalchemy import func, select
 from websockets.asyncio.client import connect
 
@@ -33,6 +34,7 @@ async def main(api_url: str, frontend_url: str, restarts: bool) -> None:
             raise RuntimeError(f"Compose operation failed: {arguments}: {result.stderr}")
 
     async with httpx.AsyncClient(base_url=api_url, timeout=10) as api:
+        await login_existing(api)
         async def create(resource: str, **data):
             response = await api.post(f"/api/{resource}", json=data)
             response.raise_for_status()
@@ -75,7 +77,7 @@ async def main(api_url: str, frontend_url: str, restarts: bool) -> None:
             identifier = tags[1]["id"]
             ws_url = api_url.replace("http", "ws", 1) + "/api/ws/live"
             proxy_url = frontend_url.replace("http", "ws", 1) + "/api/ws/live"
-            async with connect(ws_url) as first, connect(proxy_url, origin=frontend_url) as second:
+            async with connect(ws_url, additional_headers=ws_headers(api)) as first, connect(proxy_url, origin=frontend_url, additional_headers=ws_headers(api)) as second:
                 assert json.loads(await first.recv())["type"] == "ready"
                 assert json.loads(await second.recv())["type"] == "ready"
                 first_value = await next_value(first, identifier)

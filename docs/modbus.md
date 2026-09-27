@@ -117,8 +117,8 @@ The automated suite does not claim physical RTU verification. Separate local ben
 verified configured SHT20 reads and unloaded relay command read-back; those checks do not verify
 electrical contact behavior. Unit tests cover serial construction/serialization and
 transport-independent decoding; the software TCP server covers all read functions, slave addressing,
-failure and recovery. Manual commands are implemented in Phase 6; Automation uses that queue in Phase 7; authorization remains
-deferred. Commands are durably recorded but do not yet identify an authenticated requester.
+failure and recovery. Manual commands are implemented in Phase 6; Automation uses that queue in Phase 7; Phase 10 adds authorization
+and durable authenticated attribution for manual Commands.
 
 ## Phase 6 write extension
 

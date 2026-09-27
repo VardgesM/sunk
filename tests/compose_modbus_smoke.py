@@ -12,6 +12,7 @@ import subprocess
 from uuid import uuid4
 
 import httpx
+from compose_auth_helpers import bootstrap_login, browser_session, ws_headers
 from playwright.async_api import async_playwright
 from websockets.asyncio.client import connect
 
@@ -28,6 +29,9 @@ async def main() -> None:
     api_url, frontend_url = f"http://localhost:{api_port}", f"http://localhost:{frontend_port}"
     environment = {
         **os.environ,
+        "TELEGRAM_ENABLED": "false",
+        "TELEGRAM_BOT_TOKEN": "",
+        "AUTH_COOKIE_SECURE": "false",
         "API_PORT": str(api_port),
         "FRONTEND_PORT": str(frontend_port),
         "POSTGRES_PORT": str(postgres_port),
@@ -63,6 +67,7 @@ async def main() -> None:
             "PASS: isolated PostgreSQL/API/worker/frontend/Modbus test server started", flush=True
         )
         async with httpx.AsyncClient(base_url=api_url, timeout=10) as api:
+            await bootstrap_login(prefix, environment, api)
 
             async def create(resource: str, **data) -> dict:
                 response = await api.post(f"/api/{resource}", json=data)
@@ -120,7 +125,9 @@ async def main() -> None:
                 ) == expected
             identifier = tags[0]["id"]
             async with connect(
-                frontend_url.replace("http", "ws", 1) + "/api/ws/live", origin=frontend_url
+                frontend_url.replace("http", "ws", 1) + "/api/ws/live",
+                origin=frontend_url,
+                additional_headers=ws_headers(api),
             ) as ws:
                 async with asyncio.timeout(10):
                     while True:
@@ -143,6 +150,7 @@ async def main() -> None:
             async with async_playwright() as playwright:
                 browser = await playwright.chromium.launch(channel="msedge", headless=True)
                 page = await browser.new_page(viewport={"width": 1280, "height": 900})
+                await browser_session(page, api)
                 errors = []
                 page.on("pageerror", lambda error: errors.append(str(error)))
                 await page.goto(f"{frontend_url}/tags/{identifier}")

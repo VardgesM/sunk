@@ -10,6 +10,11 @@ from sqlalchemy import URL
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
+    auth_cookie_secure: bool = False  # Local HTTP development; enable with HTTPS deployment.
+    auth_session_hours: int = Field(default=8, ge=1, le=168)
+    auth_login_attempts: int = Field(default=10, ge=3, le=100)
+    auth_login_window_seconds: int = Field(default=900, ge=60, le=3600)
+
     postgres_host: str = "localhost"
     postgres_port: int = Field(default=5432, ge=1, le=65535)
     postgres_db: str = "modbus_monitor"

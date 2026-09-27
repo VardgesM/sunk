@@ -1,3 +1,4 @@
+import Can from '../auth/Can';
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Alert, Button, Chip, MenuItem, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography } from '@mui/material';
@@ -30,13 +31,13 @@ export default function CommandsPage() {
     </Stack>
     {(commands.error || error) && <Alert severity="error">{commands.error || error}</Alert>}
     {commands.loading ? <Typography role="status">Loading commands…</Typography> : !commands.rows.length ? <Typography>No commands match these filters.</Typography> : <TableContainer>
-      <Table size="small"><TableHead><TableRow>{['ID', 'Created', 'Tag / Device', 'Requested', 'Verified', 'Status', 'Source / Mode', 'Attempts', 'Error / Action'].map((label) => <TableCell key={label}>{label}</TableCell>)}</TableRow></TableHead>
+      <Table size="small"><TableHead><TableRow>{['ID', 'Created', 'Tag / Device', 'Requested', 'Verified', 'Status', 'Source / Mode / User', 'Attempts', 'Error / Action'].map((label) => <TableCell key={label}>{label}</TableCell>)}</TableRow></TableHead>
         <TableBody>{commands.rows.map((row) => <TableRow key={row.id}>
           <TableCell>{row.id}</TableCell><TableCell>{new Date(row.created_at).toLocaleString()}</TableCell>
           <TableCell><Link to={`/tags/${row.tag_id}`}>{row.tag_name}</Link><br />{row.device_name}</TableCell>
           <TableCell>{commandValue(row.requested_value)}</TableCell><TableCell>{commandValue(row.verified_value)}</TableCell>
-          <TableCell><Chip size="small" label={row.status} /></TableCell><TableCell>{row.source} / {row.telemetry_mode}</TableCell><TableCell>{row.attempt_count}</TableCell>
-          <TableCell>{row.error_message}{row.status === 'QUEUED' && <Button onClick={() => { void cancelCommand(row.id).then(commands.reload).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : 'Cancellation failed')); }}>Cancel</Button>}</TableCell>
+          <TableCell><Chip size="small" label={row.status} /></TableCell><TableCell>{row.source} / {row.telemetry_mode}<br />{row.requested_by_username ?? (row.source === 'automation' ? 'Automation' : 'Legacy / system')}</TableCell><TableCell>{row.attempt_count}</TableCell>
+          <TableCell>{row.error_message}{row.status === 'QUEUED' && <Can permission="command"><Button onClick={() => { void cancelCommand(row.id).then(commands.reload).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : 'Cancellation failed')); }}>Cancel</Button></Can>}</TableCell>
         </TableRow>)}</TableBody>
       </Table>
     </TableContainer>}

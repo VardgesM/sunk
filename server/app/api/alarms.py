@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Response
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request, Response
 from pydantic import ValidationError
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
@@ -161,7 +161,7 @@ async def events(
 
 
 @router.post("/events/{identifier}/acknowledge", response_model=EventRead)
-async def acknowledge(identifier: Identifier, session: Session):
+async def acknowledge(identifier: Identifier, request: Request, session: Session):
     event = await session.scalar(
         select(AlarmEvent).where(AlarmEvent.id == identifier).with_for_update()
     )
@@ -169,6 +169,8 @@ async def acknowledge(identifier: Identifier, session: Session):
         raise HTTPException(404, "Alarm event not found")
     if event.state != "ACTIVE":
         raise HTTPException(409, "Only an ACTIVE alarm can be acknowledged")
+    event.acknowledged_by = request.state.user.id
+    event.acknowledged_by_username = request.state.user.username
     event.state, event.acknowledged_at = "ACKNOWLEDGED", datetime.now(UTC)
     event.revision += 1
     await notify_event(session, event)

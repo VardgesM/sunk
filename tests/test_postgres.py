@@ -86,6 +86,9 @@ async def test_postgres_migrations_crud_constraints_and_hierarchy(
                 base_url="http://test",
             ) as api,
         ):
+            from tests.auth_helpers import login_test_admin
+
+            await login_test_admin(api, sessions)
             assert (await api.get("/api/health/db")).status_code == 200
             # Default replacement is serialized even when the table starts empty.
             boards = await asyncio.gather(
@@ -351,6 +354,33 @@ async def test_postgres_migrations_crud_constraints_and_hierarchy(
                     await database.commit()
                 await database.rollback()
             assert (await api.delete(f"/api/connections/{auto.json()['id']}")).status_code == 204
+            # Concurrent self-demotion must preserve one enabled ADMIN on PostgreSQL.
+            from tests.auth_helpers import TEST_PASSWORD
+
+            second = await api.post("/api/users", json={
+                "username": "second_admin", "role": "ADMIN", "password": TEST_PASSWORD,
+            })
+            assert second.status_code == 201
+            first_id = (await api.get("/api/auth/me")).json()["id"]
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as other:
+                login = await other.post("/api/auth/login", json={
+                    "username": "second_admin", "password": TEST_PASSWORD,
+                })
+                assert login.status_code == 200
+                other.headers["X-CSRF-Token"] = other.cookies["mm_csrf"]
+                results = await asyncio.gather(
+                    api.patch(f"/api/users/{first_id}", json={"role": "VIEWER"}),
+                    other.patch(f"/api/users/{second.json()['id']}", json={"role": "VIEWER"}),
+                )
+                assert sorted(response.status_code for response in results) == [200, 409]
+                from sqlalchemy import func, select
+
+                from app.models import User
+
+                async with sessions() as database:
+                    assert await database.scalar(
+                        select(func.count()).select_from(User).where(User.role == "ADMIN", User.enabled)
+                    ) == 1
         # Validate reversibility and replay inside the isolated schema.
         async with engine.begin() as connection:
             await connection.run_sync(lambda sync: migrate(sync, "base"))

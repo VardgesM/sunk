@@ -3,7 +3,8 @@
 The worker evaluates configured rules and requests commands. It never imports PyModbus or calls
 transport methods. `enqueue_command` is shared with the manual API; the existing command processor
 performs all writes, read-back verification, current/history persistence and WebSocket publication.
-There are no scripts, expressions, schedules, notifications, alarms or authenticated actor identities.
+Automation has no scripts, expressions or schedules. Alarms/notifications are separate subsystems.
+Phase 10 requires ADMIN for rule changes; worker execution does not depend on interactive sessions.
 
 ## Configuration
 

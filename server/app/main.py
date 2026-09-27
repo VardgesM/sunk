@@ -3,13 +3,14 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api import (
     alarms,
+    auth,
     automation,
     commands,
     connections,
@@ -22,11 +23,13 @@ from app.api import (
     notifications,
     runtime,
     tags,
+    users,
 )
 from app.api.health import router
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
 from app.db.session import Database
+from app.services.auth import authorize
 from app.services.live import LiveHub, NotificationListener, connect_listener, stale_loop
 
 logger = logging.getLogger(__name__)
@@ -61,19 +64,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             logger.info("API stopped")
 
     app = FastAPI(title="Modbus Monitor API", version="0.1.0", lifespan=lifespan)
-    app.include_router(router)
+    app.include_router(router, dependencies=[Depends(authorize)])
     # Static /tags/values must precede the existing /tags/{identifier} route.
-    app.include_router(current_values.router)
+    app.include_router(current_values.router, dependencies=[Depends(authorize)])
+    app.include_router(auth.router)
+    app.include_router(users.router, dependencies=[Depends(authorize)])
     app.include_router(live.router)
-    app.include_router(history.router)
-    app.include_router(runtime.router)
-    app.include_router(commands.router)
-    app.include_router(automation.router)
-    app.include_router(alarms.router)
-    app.include_router(notifications.router)
-    app.include_router(dashboards.router)
+    app.include_router(history.router, dependencies=[Depends(authorize)])
+    app.include_router(runtime.router, dependencies=[Depends(authorize)])
+    app.include_router(commands.router, dependencies=[Depends(authorize)])
+    app.include_router(automation.router, dependencies=[Depends(authorize)])
+    app.include_router(alarms.router, dependencies=[Depends(authorize)])
+    app.include_router(notifications.router, dependencies=[Depends(authorize)])
+    app.include_router(dashboards.router, dependencies=[Depends(authorize)])
     for configuration_router in (locations.router, connections.router, devices.router, tags.router):
-        app.include_router(configuration_router)
+        app.include_router(configuration_router, dependencies=[Depends(authorize)])
 
     @app.exception_handler(RequestValidationError)
     async def invalid_request(_request: Request, exc: RequestValidationError) -> JSONResponse:
@@ -97,8 +102,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=config.cors_origins,
-        allow_credentials=False,
+        allow_credentials=True,
         allow_methods=["GET", "POST", "PATCH", "DELETE"],
-        allow_headers=["Content-Type"],
+        allow_headers=["Content-Type", "X-CSRF-Token"],
     )
     return app

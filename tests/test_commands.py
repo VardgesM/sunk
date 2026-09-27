@@ -524,7 +524,8 @@ async def test_lost_write_acknowledgement_verifies_without_resending(api, databa
         postgres_password="test",
         telemetry_source="modbus",
         modbus_writes_enabled=True,
-        command_retry_seconds=0.1,
+        # Keep retry beyond reconnect backoff; equal Windows timer deadlines can wake early.
+        command_retry_seconds=0.2,
         modbus_backoff_initial_seconds=0.1,
     )
     manager = ConnectionManager(settings, factory=lambda _: client)

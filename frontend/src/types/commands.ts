@@ -1,6 +1,7 @@
 export const commandStatuses = ['QUEUED', 'EXECUTING', 'VERIFYING', 'SUCCESS', 'FAILED', 'CANCELLED', 'EXPIRED'] as const;
 export type CommandStatus = typeof commandStatuses[number];
 export interface Command {
+  requested_by?: number | null; requested_by_username?: string | null;
   id: number; request_id: string; tag_id: number; tag_name: string; device_id: number; device_name: string;
   requested_value: string | boolean; previous_value: string | boolean | null; verified_value: string | boolean | null;
   status: CommandStatus; source: 'manual' | 'automation' | 'system'; telemetry_mode: 'simulator' | 'modbus';

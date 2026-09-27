@@ -1,14 +1,14 @@
 # Modbus Monitor
 
 A configurable industrial monitoring platform. FastAPI and the worker share one Python package;
-React/TypeScript/MUI provides the interface. Phase 9 adds a dynamic Dashboard Builder alongside Alarms, Telegram, Automation, verified commands, RTU/TCP reads, simulator
+React/TypeScript/MUI provides the interface. Phase 10 adds local authentication, roles, user management and audit logging alongside the Dashboard Builder, Alarms, Telegram, Automation, verified commands, RTU/TCP reads, simulator
 telemetry, current values, history and WebSocket charts. Physical writes are disabled by default.
-Authentication remains deferred.
+Authorization is enforced by the API; worker Automation remains independent of interactive sessions.
 
 ## Repository
 
 - `server/app`: API, shared settings/database infrastructure, schemas, and separate worker entry point.
-- `server/alembic`: foundation, configuration, current values, commands and Automation, Alarms, serial binding and `0010_dashboards` migrations.
+- `server/alembic`: foundation, configuration, current values, commands and Automation, Alarms, serial binding, dashboards and `0011_auth` migrations.
 - `frontend/src`: existing shell, four configuration pages, API client, health indicator and UI tests.
 - `tests`: health/worker tests, relational CRUD tests, migration checks and opt-in PostgreSQL integration.
 - `docs`: [architecture](docs/architecture.md), [database](docs/database.md), [Modbus boundary](docs/modbus.md).
@@ -32,14 +32,28 @@ docker compose ps
 docker compose logs -f api worker
 ```
 
-Open http://localhost:5173. API docs: http://localhost:8000/docs.
+Create the first administrator once (the command prompts for a password without echoing it):
+
+```sh
+docker compose exec api python -m app.bootstrap
+```
+
+Bootstrap only works when there are no users. It never resets an existing account. Existing installations
+also need this step after upgrading to Phase 10. There is no default username/password. Do not put
+passwords into command arguments or commit credentials. For native development, after applying migrations:
+
+```powershell
+.\.venv\Scripts\python.exe -m app.bootstrap
+```
+
+Open http://localhost:5173 and sign in. API docs: http://localhost:8000/docs.
 Health: http://localhost:8000/api/health and http://localhost:8000/api/health/db.
 The status chip checks API liveness on load and every 15 seconds; it does not report device or database health.
 
 Compose starts `postgres`, `api`, `worker`, and `frontend`. PostgreSQL, API and frontend have health
 checks. Worker health is observable through heartbeat logs; there is no misleading process-only health
 check. The API applies migrations before starting; the worker waits for API/database readiness.
-The API applies migrations through `0009_serial_binding` on existing databases and fresh volumes.
+The API applies migrations through `0011_auth` on existing databases and fresh volumes.
 Existing tags with history_enabled=true begin storing every sample after upgrade; review their
 policy/retention settings before running high-frequency collection.
 
@@ -299,7 +313,7 @@ Do not run the simulator restart smoke concurrently with tests using the develop
 
 - Backend: 218 passed with PostgreSQL integration enabled (217 passed, 1 skipped without it).
 - Frontend: 32 tests passed; TypeScript, ESLint and production build passed.
-- Ruff, Compose validation, image builds, migrations through `0009_serial_binding`, PostgreSQL
+- Ruff, Compose validation, image builds, migrations through `0011_auth`, PostgreSQL
   upgrade/downgrade/replay and Alembic metadata comparison passed.
 - Isolated Docker TCP: four read functions, slave addressing, source/status/test APIs, current/history,
   WebSocket/chart rendering, communication failure/recovery and dynamic configuration passed.
@@ -309,7 +323,7 @@ Do not run the simulator restart smoke concurrently with tests using the develop
 
 Physical RTU hardware/virtual serial integration remains unverified. Windows COM access from Linux
 Docker containers is not equivalent to native access; use the documented native worker workflow.
-The Compose frontend remains a development server; authentication and production hosting are deferred.
+The Compose frontend remains a development server; production hosting remains deferred; Phase 10 adds authentication.
 
 ## Phase 6: verified manual commands
 
@@ -428,3 +442,29 @@ restart the native worker after API migration. Re-detect subsequently needs no p
 Open **Dashboard**, create a dashboard, then **Edit dashboard layout, then Add widget**. Choose Tags dynamically; drag/resize and **Save layout**. Use Rename/settings to select the default dashboard. Value, Gauge, Line Chart, Boolean Status, Switch, Numeric Setpoint, Alarm List and Text are supported. [Dashboard guide](docs/dashboards.md) explains layouts, configuration and control safety.
 
 Apply the new migration using the existing deployment procedure (`alembic -c server/alembic.ini upgrade head` for the native environment; Compose API applies migrations on startup). Rebuild API/frontend images to expose the new UI. In the Windows native-worker deployment keep the Docker worker stopped. No dashboard or physical test configuration is automatically seeded.
+
+
+## Authentication, roles and audit (Phase 10)
+
+- ADMIN manages users and all configuration, controls writable Tags and acknowledges alarms.
+- OPERATOR reads configuration/telemetry, requests manual Commands and acknowledges alarms.
+- VIEWER has read-only access, including dashboards, history and status pages.
+- Passwords use Argon2id. Sessions use HttpOnly cookies, never localStorage. Logout, password
+  changes, user edits and disabling users revoke sessions; WebSocket access is authenticated too.
+- Use the account menu to change your password (current password required). ADMIN can reset
+  other users through Users. The last enabled ADMIN cannot be disabled, demoted or deleted.
+- ADMIN's Audit page has user/action/date filters and pagination; records are not editable.
+- Local HTTP defaults to `AUTH_COOKIE_SECURE=false`. For network deployments use HTTPS and
+  set `AUTH_COOKIE_SECURE=true`; do not expose the development HTTP server as a secure deployment.
+- Sessions expire after `AUTH_SESSION_HOURS=8`. Login protection defaults to 10 failed attempts
+  per IP/username over 900 seconds. There is no authentication bypass flag.
+
+See [security and API usage](docs/security.md) for bootstrap, CSRF, sessions, permissions and attribution.
+Automated full-stack verification uses isolated databases and generated test credentials:
+
+```powershell
+.\.venv\Scripts\python.exe tests/compose_auth_smoke.py
+```
+
+It checks all three roles, browser login/logout, simulator commands, alarm acknowledgement, audit,
+WebSocket revocation and mobile layouts. It does not operate physical outputs or send Telegram messages.

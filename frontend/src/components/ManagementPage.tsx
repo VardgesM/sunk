@@ -1,3 +1,4 @@
+import Can from '../auth/Can';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Alert, Box, Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Paper, Snackbar, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from '@mui/material';
 import type { CrudApi } from '../api/configuration';
@@ -39,7 +40,7 @@ export default function ManagementPage<T extends Entity>({ title, api, columns, 
     <Box>
       <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} spacing={2} sx={{ mb: 3 }}>
         <Typography component="h1" variant="h4">{title}</Typography>
-        <Button variant="contained" onClick={() => setEdit(null)}>Create</Button>
+        <Can permission="configure"><Button variant="contained" onClick={() => setEdit(null)}>Create</Button></Can>
       </Stack>
       {filters}
       {error && <Alert severity="error" action={<Button color="inherit" onClick={() => setRevision((value) => value + 1)}>Retry</Button>}>{error}</Alert>}
@@ -50,7 +51,7 @@ export default function ManagementPage<T extends Entity>({ title, api, columns, 
               <TableHead><TableRow>{columns.map((column) => <TableCell key={column.label}>{column.label}</TableCell>)}<TableCell>Actions</TableCell></TableRow></TableHead>
               <TableBody>{rows.map((row) => <TableRow key={row.id}>
                 {columns.map((column) => <TableCell key={column.label} sx={{ overflowWrap: 'anywhere' }}>{column.render(row)}</TableCell>)}
-                <TableCell><Stack direction="row"><Button aria-label={`Edit ${row.name}`} onClick={() => setEdit(row)}>Edit</Button><Button color="error" aria-label={`Delete ${row.name}`} onClick={() => { setDeleting(row); setDeleteError(''); }}>Delete</Button></Stack></TableCell>
+                <TableCell><Stack direction="row"><Can permission="configure"><Button aria-label={`Edit ${row.name}`} onClick={() => setEdit(row)}>Edit</Button></Can><Can permission="configure"><Button color="error" aria-label={`Delete ${row.name}`} onClick={() => { setDeleting(row); setDeleteError(''); }}>Delete</Button></Can></Stack></TableCell>
               </TableRow>)}</TableBody>
             </Table>
           </TableContainer>
@@ -70,12 +71,12 @@ export default function ManagementPage<T extends Entity>({ title, api, columns, 
       <Dialog open={!!deleting} onClose={() => { if (!busy) setDeleting(undefined); }} fullWidth maxWidth="xs">
         <DialogTitle>Delete {deleting?.name}?</DialogTitle>
         <DialogContent><DialogContentText>This cannot be undone. Referenced configuration cannot be deleted.</DialogContentText>{deleteError && <Alert severity="error" sx={{ mt: 2 }}>{deleteError}</Alert>}</DialogContent>
-        <DialogActions><Button disabled={busy} onClick={() => setDeleting(undefined)}>Cancel</Button><Button color="error" disabled={busy} onClick={() => {
+        <DialogActions><Can permission="configure"><Button disabled={busy} onClick={() => setDeleting(undefined)}>Cancel</Button></Can><Can permission="configure"><Button color="error" disabled={busy} onClick={() => {
           if (!deleting) return;
           setBusy(true);
           void api.remove(deleting.id).then(() => { setDeleting(undefined); if (rows.length === 1 && offset > 0) setOffset(offset - pageSize); changed('Configuration deleted'); })
             .catch((reason: unknown) => setDeleteError(reason instanceof Error ? reason.message : 'Delete failed')).finally(() => setBusy(false));
-        }}>{busy ? 'Deleting…' : 'Delete'}</Button></DialogActions>
+        }}>{busy ? 'Deleting…' : 'Delete'}</Button></Can></DialogActions>
       </Dialog>
       <Snackbar open={!!notice} autoHideDuration={4000} onClose={() => setNotice('')}><Alert severity="success" onClose={() => setNotice('')}>{notice}</Alert></Snackbar>
     </Box>

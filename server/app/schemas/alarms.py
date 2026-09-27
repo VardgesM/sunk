@@ -42,6 +42,8 @@ class AlarmRead(AlarmInput):
 
 
 class EventRead(BaseModel):
+    acknowledged_by: int | None = None
+    acknowledged_by_username: str | None = None
     model_config = ConfigDict(from_attributes=True)
     id: int
     rule_id: int

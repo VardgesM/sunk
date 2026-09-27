@@ -71,6 +71,7 @@ def command_value(command: Command, prefix: str) -> Decimal | bool | None:
 
 def serialize_command(command: Command, tag: Tag, device: Device) -> CommandRead:
     return CommandRead(
+        requested_by=command.requested_by, requested_by_username=command.requested_by_username,
         **{
             name: getattr(command, name)
             for name in (

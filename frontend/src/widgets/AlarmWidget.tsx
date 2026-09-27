@@ -1,3 +1,4 @@
+import Can from '../auth/Can';
 import { useEffect, useState } from 'react';
 import { Alert, Button, Stack, Typography } from '@mui/material';
 import { alarmsApi } from '../api/alarms';
@@ -32,7 +33,7 @@ export default function AlarmWidget({ config }: { config: WidgetConfig }) {
       <Typography fontWeight={700}>{row.severity}: {row.name}</Typography>
       <Typography>{row.tag_name} - {row.state}</Typography>
       <Typography variant="caption">{new Date(row.activated_at).toLocaleString()}</Typography>
-      {row.state === 'ACTIVE' && <Button disabled={busy} onClick={() => void acknowledge(row.id)}>Acknowledge</Button>}
+      {row.state === 'ACTIVE' && <Can permission="acknowledge"><Button disabled={busy} onClick={() => void acknowledge(row.id)}>Acknowledge</Button></Can>}
     </Stack>)}
   </Stack>;
 }

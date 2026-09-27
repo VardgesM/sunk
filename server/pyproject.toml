@@ -12,6 +12,7 @@ dependencies = [
   "alembic>=1.14,<2", "pydantic-settings>=2.7,<3",
   "pymodbus[serial]==3.13.1",
   "tzdata>=2025.1",
+  "argon2-cffi>=25.1,<26",
 ]
 
 [project.optional-dependencies]

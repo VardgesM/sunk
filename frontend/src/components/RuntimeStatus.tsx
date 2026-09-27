@@ -1,3 +1,4 @@
+import Can from '../auth/Can';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Chip, Stack, Typography } from '@mui/material';
 import { useRuntime } from '../hooks/useRuntime';
@@ -21,7 +22,7 @@ export function ConnectionState({ id, auto = false }: { id: number; auto?: boole
       <Typography variant="caption">Detection: {data?.detection_status?.replaceAll('_', ' ') || 'PENDING'}</Typography>
       {data?.detected_at && <Typography variant="caption">Last detection: {new Date(data.detected_at).toLocaleString()}</Typography>}
       {data?.detection_error && <Typography variant="caption" color="error">{data.detection_error}</Typography>}
-      <Button disabled={detecting || data?.redetect_pending} onClick={() => { setDetecting(true); void redetectConnection(id).then(() => setDetectionMessage('Re-detect requested')).catch(e => setDetectionMessage(String(e))).finally(() => setDetecting(false)); }}>Re-detect</Button>
+      <Can permission="configure"><Button disabled={detecting || data?.redetect_pending} onClick={() => { setDetecting(true); void redetectConnection(id).then(() => setDetectionMessage('Re-detect requested')).catch(e => setDetectionMessage(String(e))).finally(() => setDetecting(false)); }}>Re-detect</Button></Can>
       {detectionMessage && <Typography variant="caption">{detectionMessage}</Typography>}
     </>}
     <Typography variant="caption">Last communication: {data?.last_success ? new Date(data.last_success).toLocaleString() : 'not yet verified'}</Typography>
@@ -60,7 +61,7 @@ export function TestConnection({ id, name }: { id: number; name: string }) {
     testConnection(id, request.signal).then(poll).catch(failed);
   }
   return <Stack spacing={1} sx={{ minWidth: 160 }}>
-    <Button disabled={busy} onClick={() => void run()} aria-label={`Test ${name}`}>{busy ? 'Testing…' : 'Test transport'}</Button>
+    <Can permission="configure"><Button disabled={busy} onClick={() => void run()} aria-label={`Test ${name}`}>{busy ? 'Testing…' : 'Test transport'}</Button></Can>
     {error && <Alert severity="error">{error}</Alert>}
     {result && <Typography variant="caption">{result.state}: {result.message ?? 'Waiting for worker'}{result.latency_ms !== null ? ` (${Math.round(result.latency_ms)} ms)` : ''}</Typography>}
   </Stack>;

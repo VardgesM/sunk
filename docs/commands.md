@@ -2,8 +2,9 @@
 
 All physical control actions go through PostgreSQL `commands`. Only the worker command processor
 calls PyModbus write methods. The API validates/enqueues; the frontend never changes actual values
-optimistically. Automation now uses this same pipeline (see automation.md); schedules, alarms, authentication and permissions remain deferred.
-Command records provide a durable action record, but **not authenticated actor attribution**.
+optimistically. Automation now uses this same pipeline (see automation.md); schedules remain deferred. Alarms report abnormal conditions without commanding outputs.
+Phase 10 adds authenticated actor attribution for manual requests and ADMIN/OPERATOR permission checks.
+Automation requests have no fictitious human user. See [security](security.md).
 Keep the current localhost-only deployment; the master switch is not an authorization system.
 
 ## Enabling control

@@ -34,7 +34,8 @@ async def request_command(
     )
     if existing:
         if (
-            existing.tag_id != tag_id
+            existing.requested_by != request.state.user.id
+            or existing.tag_id != tag_id
             or command_value(existing, "requested") != payload.value
             or type(command_value(existing, "requested")) is not type(payload.value)
         ):
@@ -77,6 +78,8 @@ async def request_command(
             max_age_seconds=request.app.state.settings.command_max_age_seconds,
             request_id=str(payload.request_id),
         )
+        command.requested_by = request.state.user.id
+        command.requested_by_username = request.state.user.username
         await session.commit()
     except IntegrityError as exc:
         await session.rollback()

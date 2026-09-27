@@ -35,6 +35,8 @@ class CommandCreate(BaseModel):
 
 
 class CommandRead(BaseModel):
+    requested_by: int | None = None
+    requested_by_username: str | None = None
     id: int
     request_id: str
     tag_id: int

@@ -92,6 +92,8 @@ class AlarmEvent(Base):
     value_numeric: Mapped[Decimal | None] = mapped_column(Numeric())
     value_boolean: Mapped[bool | None]
     activated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    acknowledged_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    acknowledged_by_username: Mapped[str | None] = mapped_column(String(64))
     acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cleared_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     clear_reason: Mapped[str | None] = mapped_column(String(100))

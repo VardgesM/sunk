@@ -8,6 +8,7 @@ from decimal import Decimal
 from uuid import uuid4
 
 import httpx
+from compose_auth_helpers import bootstrap_login, browser_session, ws_headers
 from compose_modbus_smoke import free_port
 from playwright.async_api import async_playwright
 from websockets.asyncio.client import connect
@@ -19,6 +20,9 @@ async def main() -> None:
     origin = f"http://localhost:{frontend_port}"
     env = {
         **os.environ,
+        "TELEGRAM_ENABLED": "false",
+        "TELEGRAM_BOT_TOKEN": "",
+        "AUTH_COOKIE_SECURE": "false",
         "API_PORT": str(api_port),
         "FRONTEND_PORT": str(frontend_port),
         "POSTGRES_PORT": str(pg_port),
@@ -51,6 +55,7 @@ async def main() -> None:
     try:
         await compose("up", "-d", "--no-build", "--wait")
         async with httpx.AsyncClient(base_url=f"http://localhost:{api_port}", timeout=10) as api:
+            await bootstrap_login(prefix, env, api)
 
             async def create(resource, **data):
                 response = await api.post(f"/api/{resource}", json=data)
@@ -118,7 +123,9 @@ async def main() -> None:
                 poll_interval_ms=500,
             )
             await asyncio.sleep(1)
-            async with connect(f"ws://localhost:{api_port}/api/ws/live") as ws:
+            async with connect(
+                f"ws://localhost:{api_port}/api/ws/live", additional_headers=ws_headers(api)
+            ) as ws:
                 events = []
 
                 async def receive():
@@ -169,14 +176,15 @@ async def main() -> None:
                 browser = await playwright.chromium.launch(channel="msedge", headless=True)
                 try:
                     page = await browser.new_page(viewport={"width": 390, "height": 844})
+                    await browser_session(page, api)
                     await page.goto(f"{origin}/tags/{numeric['id']}")
                     await page.get_by_label("Requested value", exact=True).fill("27.5")
                     await page.get_by_role("button", name="Apply", exact=True).click()
                     try:
                         await page.get_by_text("Verified: 27.5", exact=True).wait_for()
                     except Exception:
-                        print(await page.locator('body').inner_text(), flush=True)
-                        print((await api.get('/api/commands')).json(), flush=True)
+                        print(await page.locator("body").inner_text(), flush=True)
+                        print((await api.get("/api/commands")).json(), flush=True)
                         raise
                     assert await page.get_by_text("Status: SUCCESS", exact=True).is_visible()
                     await page.goto(f"{origin}/commands")

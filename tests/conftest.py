@@ -59,4 +59,7 @@ async def api(
             transport=ASGITransport(app=app),
             base_url="http://test",
         ) as client:
+            from tests.auth_helpers import login_test_admin
+
+            await login_test_admin(client, database_sessions)
             yield client

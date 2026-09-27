@@ -14,7 +14,7 @@ def test_migration_chain_and_offline_sql(monkeypatch: pytest.MonkeyPatch) -> Non
     output = StringIO()
     config = Config("server/alembic.ini", output_buffer=output)
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["0010_dashboards"]
+    assert scripts.get_heads() == ["0011_auth"]
     assert scripts.get_revision("0005_modbus_runtime").down_revision == "0004_history"
     assert scripts.get_revision("0004_history").down_revision == "0003_current_values"
     assert scripts.get_revision("0003_current_values").down_revision == "0002_configuration"
@@ -38,7 +38,7 @@ def test_migration_chain_and_offline_sql(monkeypatch: pytest.MonkeyPatch) -> Non
         assert "uq_devices_connection_slave" in sql
         output.truncate(0)
         output.seek(0)
-        command.downgrade(config, "0010_dashboards:0001_foundation", sql=True)
+        command.downgrade(config, "0011_auth:0001_foundation", sql=True)
         sql = output.getvalue()
         assert sql.index("DROP TABLE tags") < sql.index("DROP TABLE devices")
         assert sql.index("DROP TABLE tag_current_values") < sql.index("DROP TABLE tags")

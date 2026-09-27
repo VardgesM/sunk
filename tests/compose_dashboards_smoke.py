@@ -7,6 +7,7 @@ import subprocess
 from uuid import uuid4
 
 import httpx
+from compose_auth_helpers import bootstrap_login, browser_session
 from compose_modbus_smoke import free_port
 from playwright.async_api import async_playwright
 
@@ -16,6 +17,7 @@ async def main() -> None:
     api_port, ui_port, pg_port = free_port(), free_port(), free_port()
     env = {
         **os.environ,
+        "AUTH_COOKIE_SECURE": "false",
         "API_PORT": str(api_port),
         "FRONTEND_PORT": str(ui_port),
         "POSTGRES_PORT": str(pg_port),
@@ -52,6 +54,7 @@ async def main() -> None:
         async with httpx.AsyncClient(
             base_url=f"http://localhost:{api_port}/api", timeout=15
         ) as api:
+            await bootstrap_login(prefix, env, api)
 
             async def create(path, **values):
                 response = await api.post(path, json=values)
@@ -162,6 +165,7 @@ async def main() -> None:
                 browser = await pw.chromium.launch(channel="msedge", headless=True)
                 try:
                     page = await browser.new_page(viewport={"width": 1440, "height": 1000})
+                    await browser_session(page, api)
                     errors = []
                     sockets = []
                     events = []

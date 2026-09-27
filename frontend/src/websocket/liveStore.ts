@@ -148,7 +148,8 @@ export class LiveStore {
       }
     };
     socket.onerror = () => socket.close();
-    socket.onclose = () => {
+    socket.onclose = (event) => {
+      if (event?.code === 4401) { window.dispatchEvent(new Event('auth-expired')); return; }
       if (generation !== this.generation || socket !== this.socket) return;
       clearTimeout(this.watchdog); this.listenerReady = false;
       this.retry(generation);
@@ -161,6 +162,7 @@ export class LiveStore {
       if (generation === this.generation) this.connect(generation);
     }, Math.min(30000, 1000 * 2 ** this.attempts++));
   }
+  reset() { this.stop(); }
   private stop() {
     this.generation += 1; this.abort?.abort();
     clearTimeout(this.reconnect); clearTimeout(this.watchdog); clearTimeout(this.snapshotRetry);

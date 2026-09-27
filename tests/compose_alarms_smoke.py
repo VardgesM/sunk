@@ -7,6 +7,7 @@ import subprocess
 from uuid import uuid4
 
 import httpx
+from compose_auth_helpers import bootstrap_login, browser_session, ws_headers
 from compose_modbus_smoke import free_port
 from playwright.async_api import async_playwright
 from websockets.asyncio.client import connect
@@ -17,6 +18,7 @@ async def main() -> None:
     api_port, ui_port, pg_port = free_port(), free_port(), free_port()
     env = {
         **os.environ,
+        "AUTH_COOKIE_SECURE": "false",
         "API_PORT": str(api_port),
         "FRONTEND_PORT": str(ui_port),
         "POSTGRES_PORT": str(pg_port),
@@ -53,6 +55,7 @@ async def main() -> None:
         async with httpx.AsyncClient(
             base_url=f"http://localhost:{api_port}/api", timeout=15
         ) as api:
+            await bootstrap_login(prefix, env, api)
 
             async def create(path, **values):
                 r = await api.post(path, json=values)
@@ -138,7 +141,9 @@ async def main() -> None:
                 return values[0] if values and values[0]["state"] == expected else None
 
             messages = []
-            async with connect(f"ws://localhost:{api_port}/api/ws/live") as ws:
+            async with connect(
+                f"ws://localhost:{api_port}/api/ws/live", additional_headers=ws_headers(api)
+            ) as ws:
 
                 async def receive():
                     async for message in ws:
@@ -156,6 +161,7 @@ async def main() -> None:
                         browser = await pw.chromium.launch(channel="msedge", headless=True)
                         try:
                             page = await browser.new_page(viewport={"width": 390, "height": 844})
+                            await browser_session(page, api)
                             await page.goto(f"http://localhost:{ui_port}/alarms")
                             await page.get_by_text("Numeric alarm", exact=True).wait_for()
                             await page.get_by_role("button", name="Acknowledge", exact=True).click()

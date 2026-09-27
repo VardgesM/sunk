@@ -18,7 +18,7 @@ flowchart LR
 
 The API provides health checks, configuration CRUD, current-value snapshots, and live WebSockets.
 The separate worker acquires telemetry from the explicitly selected simulator or Modbus source and persists latest values.
-Dashboards, Automation and Alarms use existing configuration and telemetry services. Authentication is deferred. All control actions use the persistent command pipeline, with physical writes disabled by default. Shell navigation is static; dashboard and widget instances are database records, never source-code configuration.
+Dashboards, Automation and Alarms use existing configuration and telemetry services. Phase 10 enforces local authentication and role permissions. All control actions use the persistent command pipeline, with physical writes disabled by default. Shell navigation is static; dashboard and widget instances are database records, never source-code configuration.
 
 ## Configuration flow (Phase 2)
 
@@ -49,7 +49,7 @@ checks belong to the API. A future alternate writer must implement the same inva
 
 HTTP outcomes: create 201, reads/updates 200, delete 204, missing record 404, invalid configuration or
 missing referenced parent 422, uniqueness conflicts or referenced deletions 409. Failed mutations
-roll back. Configuration writes currently have no authentication; keep the local-only deployment.
+roll back. Configuration writes require an authenticated ADMIN; keep the local development deployment private.
 
 ## Live telemetry flow (Phase 3)
 
@@ -135,7 +135,7 @@ refresh. No WebSocket event triggers a history refetch. See [history](history.md
 5. Authorized write requests create audited command records; the worker executes eligible commands and records results.
 
 The Phase 6 manual command queue implements claiming and verification without adding a broker.
-Authenticated authorization and automated command producers remain future work.
+Phase 7 Automation shares this queue; Phase 10 adds authenticated manual attribution and role checks.
 Do not claim exactly-once execution for device writes.
 
 ## Lifecycle and errors
@@ -152,7 +152,7 @@ dedicated release migration step before future horizontal scaling. No schema cre
 
 Compose exposes ports on localhost only and persists PostgreSQL in a named volume. The frontend
 container runs Vite for local development and proxies `/api` to the API container. A production
-deployment will need static asset serving, TLS, authentication, restrictive origins, secrets management,
+deployment will need static asset serving, TLS, restrictive origins, secrets management,
 and an Nginx deployment configuration in a later task. Do not expose this foundation to public networks.
 
 Implementation references: [SQLAlchemy async sessions](https://docs.sqlalchemy.org/en/20/orm/extensions/asyncio.html),
@@ -219,3 +219,17 @@ connections continue independently. See [serial binding](serial-binding.md).
 ## Dynamic dashboards
 
 Phase 9 adds configuration-only Dashboard APIs and a React Grid Layout editor. Relational widget Tag bindings feed the existing shared LiveStore; charts use history REST, alarm lists reuse Alarm APIs/events, and control widgets reuse verified Commands. No worker transport or Automation/Alarm logic is added. See [Dashboard Builder](dashboards.md).
+
+
+## Phase 10: authentication boundary
+
+HTTP API dependencies resolve opaque PostgreSQL-backed sessions and enforce role permissions before
+business handlers. All configuration mutations default to ADMIN; manual command requests/cancellation
+and alarm acknowledgements explicitly allow OPERATOR. Frontend role checks only adjust the UI.
+WebSocket handshakes use the same cookie and revalidate sessions during the connection. A revoked
+session closes the socket; clients clear shared live state and return to login. No per-widget sockets.
+
+Worker telemetry, Automation, notifications and persistent command processing still use their existing
+PostgreSQL workflows with no interactive session. Manual command requests carry the authenticated
+user's ID and username snapshot; automation commands keep their existing source and no fabricated user.
+Audit writes commit with API mutations. See [security](security.md) for the complete boundary and setup.

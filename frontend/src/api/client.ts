@@ -5,10 +5,12 @@ export class ApiError extends Error {
 }
 
 export async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const csrf = document.cookie.split('; ').find(item => item.startsWith('mm_csrf='))?.slice('mm_csrf='.length);
   const response = await fetch(`/api${path}`, {
-    ...options, headers: { Accept: 'application/json', ...options.body ? { 'Content-Type': 'application/json' } : {}, ...options.headers },
+    credentials: 'same-origin', ...options, headers: { Accept: 'application/json', ...(csrf && options.method && !['GET','HEAD'].includes(options.method) ? { 'X-CSRF-Token': decodeURIComponent(csrf) } : {}), ...options.body ? { 'Content-Type': 'application/json' } : {}, ...options.headers },
   });
   if (!response.ok) {
+    if (response.status === 401 && path !== '/auth/login') window.dispatchEvent(new Event('auth-expired'));
     let message = `API request failed (${response.status})`;
     const contentType = response.headers.get('content-type');
     if (contentType?.includes('application/json')) {

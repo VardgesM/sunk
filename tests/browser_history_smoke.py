@@ -7,6 +7,7 @@ from typing import Any
 from uuid import uuid4
 
 import httpx
+from compose_auth_helpers import browser_session, login_existing, ws_headers
 from playwright.async_api import async_playwright
 from sqlalchemy import delete, func, select
 from websockets.asyncio.client import connect
@@ -21,6 +22,7 @@ async def main() -> None:
     created: list[tuple[str, int]] = []
     database = Database(Settings())
     async with httpx.AsyncClient(base_url="http://localhost:8000", timeout=15) as api:
+        await login_existing(api)
 
         async def create(resource: str, **data: Any) -> dict:
             response = await api.post(f"/api/{resource}", json=data)
@@ -104,7 +106,8 @@ async def main() -> None:
             states = [p["value_boolean"] for p in bool_history["points"] if p["quality"] == "GOOD"]
             assert all(a != b for a, b in zip(states, states[1:]))
             async with connect(
-                "ws://localhost:5173/api/ws/live", origin="http://localhost:5173"
+                "ws://localhost:5173/api/ws/live", origin="http://localhost:5173",
+                additional_headers=ws_headers(api),
             ) as socket:
                 revisions = []
                 async with asyncio.timeout(10):
@@ -139,6 +142,7 @@ async def main() -> None:
             async with async_playwright() as playwright:
                 browser = await playwright.chromium.launch(channel="msedge", headless=True)
                 page = await browser.new_page(viewport={"width": 1440, "height": 900})
+                await browser_session(page, api)
                 errors: list[str] = []
                 page.on("pageerror", lambda error: errors.append(str(error)))
                 await page.goto(f"http://localhost:5173/tags/{numeric['id']}")

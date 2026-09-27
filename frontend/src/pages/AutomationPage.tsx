@@ -1,3 +1,4 @@
+import Can from '../auth/Can';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Alert, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Stack, Typography } from '@mui/material';
@@ -32,7 +33,7 @@ export default function AutomationPage() {
   const toggle = async (rule: Rule) => { setBusy(true); try { await automationApi.update(rule.id, { enabled: !rule.enabled }); await reload(); setSuccess('Rule updated'); } catch (e) { setError(message(e)); } finally { setBusy(false); } };
   return <Stack spacing={2}><Typography variant="h4" component="h1">Automation</Typography>
     <Typography>Rules evaluate fresh GOOD telemetry and request verified commands. Highest priority wins conflicts; no direct device writes.</Typography>
-    <Button variant="contained" onClick={() => setEditor('new')}>Create rule</Button>
+    <Can permission="configure"><Button variant="contained" onClick={() => setEditor('new')}>Create rule</Button></Can>
     {error && <Alert severity="error">{error}</Alert>}{success && <Alert severity="success" onClose={() => setSuccess('')}>{success}</Alert>}
     {loading ? <Typography role="status">Loading rules...</Typography> : !rows.length && <Typography>No automation rules configured.</Typography>}
     {rows.map(rule => <Stack key={rule.id} spacing={1} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 2 }}>
@@ -40,10 +41,10 @@ export default function AutomationPage() {
       <Stack direction="row" spacing={1}><Chip label={rule.runtime?.state || 'IDLE'} /><Chip label={rule.runtime?.last_result || 'No executions'} /></Stack>
       <Typography>Last triggered: {rule.runtime?.last_triggered_at ? new Date(rule.runtime.last_triggered_at).toLocaleString() : 'Never'}</Typography>
       {rule.runtime?.error && <Alert severity="warning">{rule.runtime.error}</Alert>}
-      <Stack direction="row" flexWrap="wrap"><Button disabled={busy} onClick={() => { void toggle(rule); }}>{rule.enabled ? 'Disable' : 'Enable'}</Button><Button onClick={() => setEditor(rule)}>Edit</Button><Button onClick={() => setHistory(rule)}>Executions</Button><Button color="error" onClick={() => setDeleting(rule)}>Delete</Button></Stack>
+      <Stack direction="row" flexWrap="wrap"><Can permission="configure"><Button disabled={busy} onClick={() => { void toggle(rule); }}>{rule.enabled ? 'Disable' : 'Enable'}</Button></Can><Can permission="configure"><Button onClick={() => setEditor(rule)}>Edit</Button></Can><Button onClick={() => setHistory(rule)}>Executions</Button><Can permission="configure"><Button color="error" onClick={() => setDeleting(rule)}>Delete</Button></Can></Stack>
     </Stack>)}
     {editor && <RuleEditor tags={tags} initial={editor === 'new' ? undefined : editable(editor)} onClose={() => setEditor(null)} onSave={async value => { if (editor === 'new') await automationApi.create(value); else await automationApi.update(editor.id, value); setEditor(null); setSuccess('Rule saved'); await reload(); }} />}
     {history && <History rule={history} onClose={() => setHistory(null)} />}
-    {deleting && <Dialog open onClose={() => setDeleting(null)}><DialogTitle>Delete {deleting.name}?</DialogTitle><DialogContent>Rules with execution history cannot be deleted; disable them instead.</DialogContent><DialogActions><Button onClick={() => setDeleting(null)}>Cancel</Button><Button disabled={busy} color="error" onClick={() => { setBusy(true); void automationApi.remove(deleting.id).then(async () => { setDeleting(null); setSuccess('Rule deleted'); await reload(); }).catch(e => setError(message(e))).finally(() => setBusy(false)); }}>Confirm delete</Button></DialogActions></Dialog>}
+    {deleting && <Dialog open onClose={() => setDeleting(null)}><DialogTitle>Delete {deleting.name}?</DialogTitle><DialogContent>Rules with execution history cannot be deleted; disable them instead.</DialogContent><DialogActions><Can permission="configure"><Button onClick={() => setDeleting(null)}>Cancel</Button></Can><Can permission="configure"><Button disabled={busy} color="error" onClick={() => { setBusy(true); void automationApi.remove(deleting.id).then(async () => { setDeleting(null); setSuccess('Rule deleted'); await reload(); }).catch(e => setError(message(e))).finally(() => setBusy(false)); }}>Confirm delete</Button></Can></DialogActions></Dialog>}
   </Stack>;
 }

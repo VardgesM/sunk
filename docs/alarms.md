@@ -28,7 +28,7 @@ Acknowledgement changes ACTIVE -> ACKNOWLEDGED and records its UTC timestamp; it
 measurements or control equipment. The next valid clearing reading changes either open state to
 CLEARED. Cleared/acknowledged events cannot be acknowledged again (409). A later activation is a
 new event. All events retain the name, Tag name, unit, condition, severity and triggering typed value.
-Acknowledgement identity is not recorded yet because authentication is not implemented.
+Phase 10 records the acknowledging user ID and username; OPERATOR or ADMIN permission is required.
 
 Hysteresis applies **after activation**, for numeric inequalities only. For > or >= threshold T and
 H > 0, the alarm remains open while value > T-H and clears at value <= T-H. For < or <= it stays

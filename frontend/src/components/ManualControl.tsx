@@ -1,3 +1,4 @@
+import { usePermission } from '../auth/context';
 import { useRef, useState } from 'react';
 import { Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, Stack, TextField, Typography } from '@mui/material';
 import { createCommand, cancelCommand } from '../api/commands';
@@ -10,6 +11,7 @@ import { LiveValue } from './LiveValues';
 
 export default function ManualControl({ tag, confirmationRequired = false }: { tag: Tag; confirmationRequired?: boolean }) {
   const { data: runtime } = useRuntime<SystemRuntime>('/system/runtime');
+  const canControl = usePermission('command');
   const commands = useCommands(`tag_id=${tag.id}`);
   const [submitted, setSubmitted] = useState<Command>();
   const observed = commands.rows[0];
@@ -36,6 +38,7 @@ export default function ManualControl({ tag, confirmationRequired = false }: { t
     try { await cancelCommand(latest.id); commands.reload(); }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Cancellation failed'); }
   }
+  if (!canControl) return <Stack spacing={1}><Typography>Read-only access</Typography><Typography>Actual: <LiveValue tagId={tag.id} field="value" control /> {tag.unit}</Typography><LiveValue tagId={tag.id} field="quality" /></Stack>;
   return <Stack spacing={2}>
     <Typography variant="h6">Manual control</Typography>
     {!available && <Alert severity="warning">Writes unavailable: physical writes are disabled, configuration is disabled, or the worker is offline.</Alert>}

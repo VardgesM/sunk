@@ -1,4 +1,5 @@
-import { render, screen } from '@testing-library/react';
+import { render } from './render';
+import { screen } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import { LiveConnectionStatus, LiveValue } from '../components/LiveValues';
 
