@@ -44,7 +44,16 @@ async def initialize(database: Database, settings: Settings) -> None:
             for entity, priority in PRIORITIES.items():
                 await session.execute(
                     text(
-                        f"INSERT INTO sync_outbox(event_id,entity,operation,priority,payload,created_at) SELECT gen_random_uuid()::text, CAST(:entity AS text), 'upsert', :priority, sync_document(:entity,to_jsonb(t)), now() FROM {entity} t"
+                        f"""
+                        INSERT INTO sync_outbox
+                          (event_id,entity,operation,priority,payload,created_at,coalesce_key)
+                        SELECT gen_random_uuid()::text, CAST(:entity AS text), 'upsert',
+                          :priority, sync_document(:entity,to_jsonb(t)), now(),
+                          sync_state_key(:entity,to_jsonb(t)) FROM {entity} t
+                        ON CONFLICT (coalesce_key) DO UPDATE SET
+                          id=EXCLUDED.id,event_id=EXCLUDED.event_id,operation=EXCLUDED.operation,
+                          payload=EXCLUDED.payload,created_at=EXCLUDED.created_at,retry_at=NULL
+                        """
                     ),
                     {"entity": entity, "priority": priority},
                 )

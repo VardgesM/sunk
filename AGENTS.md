@@ -74,3 +74,8 @@
 - Production Cloud exposes only its reverse proxy; PostgreSQL and FastAPI remain on private Docker networks.
 - Production Cloud must not include a hardware/Automation worker service, even behind an optional profile.
 - First production commissioning is read-only: physical writes are disabled on both Edge and Cloud.
+
+- Current-state synchronization must not create an unbounded durable backlog.
+- Historical telemetry is durable and must never be silently coalesced.
+- Realtime current state must not be blocked by historical catch-up.
+- Older synchronized state must never overwrite newer Tag state.

@@ -10,6 +10,7 @@ from uuid import uuid4
 import httpx
 from compose_auth_helpers import bootstrap_login, browser_session, ws_headers
 from compose_modbus_smoke import free_port
+from compose_sync_backlog import verify_backlog
 from playwright.async_api import async_playwright
 from websockets.asyncio.client import connect
 
@@ -286,6 +287,7 @@ async def main():
             print(
                 "PASS: mobile Cloud dashboard/chart/control, read-only configuration, Edge status UI"
             )
+            await verify_backlog(edge, cloud, device, compose, create, rows, until)
             for service in ("edge-api", "cloud-api"):
                 await compose("exec", "-T", service, "alembic", "check")
             logs = await compose(

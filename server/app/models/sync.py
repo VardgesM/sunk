@@ -50,7 +50,11 @@ class EdgeInstallation(Base):
 
 class SyncOutbox(Base):
     __tablename__ = "sync_outbox"
-    __table_args__ = (Index("ix_sync_outbox_priority_id", "priority", "id"),)
+    __table_args__ = (
+        Index("ix_sync_outbox_priority_id", "priority", "id"),
+        Index("ix_sync_outbox_entity_id", "entity", "id"),
+    )
+    coalesce_key: Mapped[str | None] = mapped_column(String(120), unique=True)
     id: Mapped[int] = mapped_column(
         BigInteger().with_variant(Integer, "sqlite"),
         primary_key=True,

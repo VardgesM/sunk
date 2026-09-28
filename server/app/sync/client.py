@@ -2,15 +2,19 @@
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from urllib.parse import urlsplit
 
 import httpx
-from sqlalchemy import delete, or_, select, update
+from sqlalchemy import Select, case, delete, or_, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.db.session import Database
 from app.models import SyncOutbox, SyncState
+from app.sync.catalog import CURRENT_ENTITIES, STATUS_ENTITIES
 from app.sync.protocol import RemoteAction
 from app.sync.remote import accept_remote
 
@@ -42,6 +46,8 @@ class SyncClient:
             follow_redirects=False,
         )
         self.failures = 0
+        # Scheduling hint only; pending data and ordering remain durable in PostgreSQL.
+        self.current_cursor: str | None = None
 
     async def cycle(self) -> None:
         async with self.database.sessions() as session:
@@ -54,7 +60,7 @@ class SyncClient:
             "X-Edge-ID": identity,
         }
 
-        async def call(method, path, **kwargs):
+        async def call(method: str, path: str, **kwargs: Any) -> dict[str, Any]:
             response = await self.http.request(
                 method, "api/sync/v1/" + path, headers=headers, **kwargs
             )
@@ -70,69 +76,131 @@ class SyncClient:
             action = RemoteAction.model_validate(data)
             async with self.database.sessions() as session, session.begin():
                 await accept_remote(session, self.settings, action, identity)
+        # Small bounded dependency/event batch first; never share a FIFO lane with history.
         async with self.database.sessions() as session:
-            # Reserve capacity for each lane; old history cannot starve control results or vice versa.
-            rows = []
-            per_lane = max(1, self.settings.sync_batch_size // 6)
-            for priority in (0, 1, 2, 3, 4, 9):
-                rows.extend(
-                    await session.scalars(
-                        select(SyncOutbox)
-                        .where(
-                            SyncOutbox.priority == priority,
-                            or_(
-                                SyncOutbox.retry_at.is_(None),
-                                SyncOutbox.retry_at <= datetime.now(UTC),
-                            ),
-                        )
-                        .order_by(SyncOutbox.id)
-                        .limit(per_lane)
-                    )
+            events = []
+            per_lane = max(1, self.settings.sync_batch_size // 4)
+            for priority in (0, 1, 2, 4):
+                rows = await session.scalars(
+                    self.ready()
+                    .where(SyncOutbox.priority == priority)
+                    .order_by(SyncOutbox.id)
+                    .limit(per_lane)
                 )
-            rows = rows[: self.settings.sync_batch_size]
-            events = [
-                {
-                    "event_id": r.event_id,
-                    "sequence": r.id,
-                    "entity": r.entity,
-                    "operation": r.operation,
-                    "payload": r.payload,
-                }
-                for r in rows
-            ]
-        if events:
-            result = await call("POST", "events", json={"version": 1, "events": events})
-            ids = set(result["acknowledged"])
-            if not ids.issubset({e["event_id"] for e in events}):
-                raise ValueError("Invalid Cloud acknowledgement")
-            async with self.database.sessions() as session, session.begin():
-                if ids:
-                    await session.execute(delete(SyncOutbox).where(SyncOutbox.event_id.in_(ids)))
-                deferred = [item["event_id"] for item in result.get("deferred", [])]
-                if deferred:
-                    await session.execute(
-                        update(SyncOutbox)
-                        .where(SyncOutbox.event_id.in_(deferred))
-                        .values(
-                            retry_at=datetime.now(UTC)
-                            + timedelta(seconds=max(5, self.settings.sync_interval_seconds * 3))
+                events.extend(self.serialize(row) for row in rows)
+        deferred = await self.send(call, events)
+        # Read latest payloads immediately before each upload, not at the start of a long cycle.
+        for entities, limit in (
+            (
+                CURRENT_ENTITIES,
+                self.settings.sync_current_batch_size or self.settings.sync_batch_size,
+            ),
+            (STATUS_ENTITIES, self.settings.sync_batch_size),
+            (
+                ("tag_history",),
+                self.settings.sync_history_batch_size or self.settings.sync_batch_size,
+            ),
+        ):
+            async with self.database.sessions() as session:
+                if entities == CURRENT_ENTITIES:
+                    rows = await self.current_rows(session, limit)
+                else:
+                    rows = await session.scalars(
+                        self.ready()
+                        .where(SyncOutbox.entity.in_(entities))
+                        .order_by(
+                            case((SyncOutbox.entity == "worker_runtime", 0), else_=1), SyncOutbox.id
                         )
+                        .limit(limit)
                     )
-                state = await session.get(SyncState, 1)
-                state.last_sync_at = datetime.now(UTC)
-                state.failures = 0
-                state.last_error = (
-                    "Sync records deferred; metadata dependency or validation requires retry"
-                    if result.get("deferred")
-                    else None
-                )
-        else:
-            async with self.database.sessions() as session, session.begin():
-                state = await session.get(SyncState, 1)
-                state.last_sync_at = datetime.now(UTC)
-                state.last_error = None
-                state.failures = 0
+                batch = [self.serialize(row) for row in rows]
+                cursor = rows[-1].coalesce_key if entities == CURRENT_ENTITIES and rows else None
+            deferred = await self.send(call, batch) or deferred
+            if entities == CURRENT_ENTITIES and cursor:
+                self.current_cursor = cursor
+        async with self.database.sessions() as session, session.begin():
+            state = await session.get(SyncState, 1)
+            state.last_sync_at = datetime.now(UTC)
+            state.failures = 0
+            state.last_error = (
+                "Sync records deferred; metadata dependency or validation requires retry"
+                if deferred
+                else None
+            )
         self.failures = 0
+
+    async def current_rows(self, session: AsyncSession, limit: int) -> list[SyncOutbox]:
+        # Replacement changes the sequence. Sorting only by that sequence can repeatedly
+        # select the same first Tags when all Tags update faster than sync. Rotate stable
+        # keys instead; no per-Tag request or full table load is needed.
+        query = self.ready().where(SyncOutbox.entity.in_(CURRENT_ENTITIES))
+        order = (SyncOutbox.coalesce_key, SyncOutbox.id)
+        if self.current_cursor is None:
+            return list(await session.scalars(query.order_by(*order).limit(limit)))
+        rows = list(
+            await session.scalars(
+                query.where(SyncOutbox.coalesce_key > self.current_cursor)
+                .order_by(*order)
+                .limit(limit)
+            )
+        )
+        if len(rows) < limit:
+            rows.extend(
+                await session.scalars(
+                    query.where(
+                        or_(
+                            SyncOutbox.coalesce_key <= self.current_cursor,
+                            SyncOutbox.coalesce_key.is_(None),
+                        )
+                    )
+                    .order_by(*order)
+                    .limit(limit - len(rows))
+                )
+            )
+        return rows
+
+    @staticmethod
+    def ready() -> Select[tuple[SyncOutbox]]:
+        return select(SyncOutbox).where(
+            or_(SyncOutbox.retry_at.is_(None), SyncOutbox.retry_at <= datetime.now(UTC))
+        )
+
+    @staticmethod
+    def serialize(row: SyncOutbox) -> dict[str, Any]:
+        return {
+            "event_id": row.event_id,
+            "sequence": row.id,
+            "entity": row.entity,
+            "operation": row.operation,
+            "payload": row.payload,
+        }
+
+    async def send(
+        self, call: Callable[..., Awaitable[dict[str, Any]]], events: list[dict[str, Any]]
+    ) -> bool:
+        if not events:
+            return False
+        result = await call("POST", "events", json={"version": 1, "events": events})
+        ids = set(result["acknowledged"])
+        deferred = {item["event_id"] for item in result.get("deferred", [])}
+        sent = {event["event_id"] for event in events}
+        if not (ids | deferred).issubset(sent) or ids & deferred:
+            raise ValueError("Invalid Cloud acknowledgement")
+        async with self.database.sessions() as session, session.begin():
+            if ids:
+                # Worker replacement changes UUID atomically. ACK of an old upload cannot
+                # delete a newer pending value, even if it arrived while HTTP was in flight.
+                await session.execute(delete(SyncOutbox).where(SyncOutbox.event_id.in_(ids)))
+            if deferred:
+                await session.execute(
+                    update(SyncOutbox)
+                    .where(SyncOutbox.event_id.in_(deferred))
+                    .values(
+                        retry_at=datetime.now(UTC)
+                        + timedelta(seconds=max(5, self.settings.sync_interval_seconds * 3))
+                    )
+                )
+        return bool(deferred)
 
     async def step(self) -> float:
         try:
@@ -160,9 +228,11 @@ class SyncClient:
     async def run(self, stop: asyncio.Event) -> None:
         try:
             while not stop.is_set():
+                started = asyncio.get_running_loop().time()
                 delay = await self.step()
+                elapsed = asyncio.get_running_loop().time() - started
                 try:
-                    await asyncio.wait_for(stop.wait(), delay)
+                    await asyncio.wait_for(stop.wait(), max(0, delay - elapsed))
                 except TimeoutError:
                     pass
         finally:

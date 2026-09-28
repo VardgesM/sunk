@@ -91,6 +91,8 @@ services:
       SYNC_ALLOW_INSECURE_HTTP: "true"
       SYNC_INTERVAL_SECONDS: "0.2"
       SYNC_BATCH_SIZE: "500"
+      SYNC_CURRENT_BATCH_SIZE: "100"
+      SYNC_HISTORY_BATCH_SIZE: "25"
       SYNC_BACKOFF_MAX_SECONDS: "2"
     command: ["python", "-m", "app.sync"]
     depends_on:

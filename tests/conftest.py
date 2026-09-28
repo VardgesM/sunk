@@ -13,6 +13,7 @@ from app.main import create_app
 
 @pytest.fixture(autouse=True)
 def disable_background_database_tasks(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_MODE", "standalone")
     monkeypatch.setenv("LIVE_UPDATES_ENABLED", "false")
     monkeypatch.setenv("TELEMETRY_SOURCE", "")
     monkeypatch.setenv("SIMULATOR_ENABLED", "false")

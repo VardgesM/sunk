@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     sync_allow_insecure_http: bool = False  # Isolated local integration only.
     sync_interval_seconds: float = Field(default=2, ge=0.1, le=300)
     sync_batch_size: int = Field(default=100, ge=6, le=500)
+    sync_current_batch_size: int | None = Field(default=None, ge=1, le=500)
+    sync_history_batch_size: int | None = Field(default=None, ge=1, le=500)
     sync_timeout_seconds: float = Field(default=10, ge=1, le=30)
     sync_backoff_max_seconds: float = Field(default=60, ge=1, le=600)
     remote_command_max_age_seconds: int = Field(default=60, ge=1, le=300)

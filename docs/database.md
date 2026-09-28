@@ -249,3 +249,12 @@ and attribution tables/columns, so back up retained audit information before an 
 ## Phase 11 sync schema ? migration 0012_edge_cloud
 
 `sync_state` persists database role/installation identity and sync health. `sync_outbox` stores UUID events, priority, payload and retry time. `edge_installations` stores enabled machine identities and token digests. `sync_receipts` deduplicates events per Edge. `sync_mappings` maps stable UUID identities/source keys to Cloud keys and monotonic source sequences. `remote_requests` tracks Cloud user attribution and expiring correlated command/acknowledgement delivery; `remote_inbox` deduplicates Edge processing. Restrictive FKs preserve history; Cloud user references become NULL on deletion while attribution snapshots remain. Existing commands add PENDING_EDGE/DELIVERED. Users/password hashes never mirror. See [sync lifecycle](edge-cloud.md).
+
+## Migration 0013: replaceable sync state
+
+`sync_outbox.coalesce_key` is nullable and unique. Current Tag/connection/worker state
+uses an entity + local key; one installation is persisted per Edge database. Other records
+keep NULL and remain durable independent events. Replacements get a fresh sequence and
+UUID. `(entity,id)` supports separate queue reads. Migration compacts only old state rows;
+history/Alarm/Command/Automation events retain identifiers and payloads. No change to Tag
+history policy or current/history storage. [Upgrade and ordering semantics](realtime-sync.md).

@@ -494,3 +494,431 @@ async def test_sync_migration_downgrade_upgrade_matches_models(pair):
 
     async with engine.begin() as connection:
         await connection.run_sync(check)
+
+
+async def numeric_tag(edge, **overrides):
+    return await setup_tag(
+        edge.api,
+        register_type="holding_register",
+        data_type="float32",
+        history_enabled=overrides.pop("history_enabled", False),
+        **overrides,
+    )
+
+
+async def sample(edge, tag_id, value, *, quality="GOOD", now=None):
+    from decimal import Decimal
+
+    now = now or datetime.now(UTC)
+    async with edge.sessions() as session, session.begin():
+        await upsert_current(
+            session,
+            tag_id,
+            reading=Reading(Decimal(str(value)), now, source="modbus_rtu")
+            if quality == "GOOD"
+            else None,
+            quality=quality,
+            error=None if quality == "GOOD" else "test communication failure",
+            now=now,
+        )
+
+
+async def latest_pending(edge, entity="tag_current_values"):
+    async with edge.sessions() as session:
+        row = await session.scalar(
+            select(SyncOutbox).where(SyncOutbox.entity == entity).order_by(SyncOutbox.id.desc())
+        )
+        return SyncClient.serialize(row)
+
+
+async def test_current_coalesces_and_cloud_history_not_invented(pair):
+    from app.models import SyncReceipt
+
+    edge, cloud, client, identity = pair
+    tag = await numeric_tag(edge)
+    for value in (10, 11, 12, 13):
+        await sample(edge, tag["id"], value)
+    async with edge.sessions() as session:
+        pending = list(
+            await session.scalars(
+                select(SyncOutbox).where(SyncOutbox.entity == "tag_current_values")
+            )
+        )
+        assert len(pending) == 1 and pending[0].payload["value_numeric"] == "13"
+        event_id = pending[0].event_id
+    await client.cycle()
+    current = (await cloud.api.get("/api/tags/values")).json()
+    assert len(current) == 1 and current[0]["value_numeric"] == 13
+    assert current[0]["source"] == "modbus_rtu"
+    async with cloud.sessions() as session:
+        assert await session.scalar(select(func.count()).select_from(TagHistory)) == 0
+        assert await session.get(SyncReceipt, (identity, event_id)) is None
+
+
+@pytest.mark.parametrize(
+    "old_quality,new_quality", [("COMM_ERROR", "GOOD"), ("GOOD", "COMM_ERROR")]
+)
+async def test_current_late_quality_packets_never_regress(pair, old_quality, new_quality):
+    edge, cloud, client, identity = pair
+    tag = await numeric_tag(edge)
+    await sample(edge, tag["id"], 1)
+    await drain(client, edge)
+    await sample(edge, tag["id"], 10, quality=old_quality)
+    older = await latest_pending(edge)
+    await sample(edge, tag["id"], 13, quality=new_quality)
+    newer = await latest_pending(edge)
+    headers = {"Authorization": "Bearer " + TOKEN, "X-Edge-ID": identity}
+    for event in (newer, older, newer):
+        response = await cloud.api.post(
+            "/api/sync/v1/events", json={"events": [event]}, headers=headers
+        )
+        assert response.json()["acknowledged"] == [event["event_id"]]
+    current = (await cloud.api.get("/api/tags/values")).json()[0]
+    assert current["quality"] == new_quality
+    assert current["source"] == "modbus_rtu"
+    assert current["error"] == newer["payload"]["error"]
+    assert str(current["value_numeric"]) == newer["payload"]["value_numeric"]
+
+
+async def test_acknowledgement_race_preserves_newer_unsent_current(pair):
+    edge, cloud, client, identity = pair
+    tag = await numeric_tag(edge)
+    await drain(client, edge)
+    await sample(edge, tag["id"], 10)
+    original_http = client.http
+    replaced = False
+
+    async def transport(request):
+        nonlocal replaced
+        response = await original_http.request(
+            request.method, str(request.url), headers=request.headers, content=request.content
+        )
+        if request.url.path.endswith("/events") and not replaced:
+            import json
+
+            events = json.loads(request.content)["events"]
+            if any(event["entity"] == "tag_current_values" for event in events):
+                replaced = True
+                await sample(edge, tag["id"], 13)  # New UUID while old ACK is in flight.
+        return response
+
+    client.http = httpx.AsyncClient(
+        base_url="http://cloud/", transport=httpx.MockTransport(transport)
+    )
+    await client.cycle()
+    assert replaced
+    assert (await latest_pending(edge))["payload"]["value_numeric"] == "13"
+    assert (await cloud.api.get("/api/tags/values")).json()[0]["value_numeric"] == 10
+    await client.http.aclose()
+    client.http = original_http
+    await client.cycle()
+    assert (await cloud.api.get("/api/tags/values")).json()[0]["value_numeric"] == 13
+
+
+async def test_realtime_before_history_backlog_offline_restart_and_no_loss(pair):
+    from decimal import Decimal
+
+    from sqlalchemy import insert
+
+    edge, cloud, client, identity = pair
+    tag = await numeric_tag(edge)
+    await drain(client, edge)
+    start = datetime.now(UTC) - timedelta(days=1)
+    history = [
+        dict(
+            tag_id=tag["id"],
+            value_numeric=Decimal(n),
+            quality="GOOD",
+            source="modbus_rtu",
+            recorded_at=start + timedelta(seconds=n),
+            source_timestamp=start + timedelta(seconds=n),
+        )
+        for n in range(2000)
+    ]
+    async with edge.sessions() as session, session.begin():
+        await session.execute(insert(TagHistory), history)
+    original_http = client.http
+
+    async def offline(request):
+        raise httpx.ConnectError("offline", request=request)
+
+    client.http = httpx.AsyncClient(
+        base_url="http://cloud/", transport=httpx.MockTransport(offline)
+    )
+    assert await client.step() == 4
+    for value in (10, 11, 12, 13):
+        await sample(edge, tag["id"], value)
+    await client.http.aclose()
+    # Restart loses all client memory; queued current/history remain in PostgreSQL.
+    recovered = SyncClient(edge.db, edge.settings, original_http)
+    recovered.settings.sync_history_batch_size = 100
+    await recovered.cycle()
+    assert (await cloud.api.get("/api/tags/values")).json()[0]["value_numeric"] == 13
+    pending = (await edge.api.get("/api/sync/status")).json()
+    assert pending["pending_current"] == 0 and pending["pending_history"] == 1900
+    assert pending["pending"] == sum(
+        pending[k]
+        for k in (
+            "pending_current",
+            "pending_history",
+            "pending_commands",
+            "pending_events",
+            "pending_status",
+            "pending_metadata",
+        )
+    )
+    async with edge.sessions() as session:
+        row = await session.scalar(select(SyncOutbox).where(SyncOutbox.entity == "tag_history"))
+        retry = SyncClient.serialize(row)
+    await drain(recovered, edge)
+    for _ in range(2):
+        result = await cloud.api.post(
+            "/api/sync/v1/events",
+            json={"events": [retry]},
+            headers={"Authorization": "Bearer " + TOKEN, "X-Edge-ID": identity},
+        )
+        assert result.status_code == 200
+    async with cloud.sessions() as session:
+        rows = list(await session.scalars(select(TagHistory).order_by(TagHistory.recorded_at)))
+        assert len(rows) == 2000
+        assert [row.value_numeric for row in rows] == [Decimal(n) for n in range(2000)]
+        assert rows[0].recorded_at == start and rows[-1].recorded_at == start + timedelta(
+            seconds=1999
+        )
+
+
+async def test_many_tags_bound_current_and_runtime_pending(pair):
+    from app.models import WorkerRuntime
+
+    edge, cloud, client, identity = pair
+    first = await numeric_tag(edge)
+    tags = [first]
+    for n in range(1, 24):
+        response = await edge.api.post(
+            "/api/tags",
+            json={
+                "name": f"Test {n}",
+                "key": f"load_{n}",
+                "device_id": first["device_id"],
+                "register_type": "holding_register",
+                "address": n * 2,
+                "data_type": "float32",
+                "history_enabled": False,
+            },
+        )
+        assert response.status_code == 201
+        tags.append(response.json())
+    await worker(edge.sessions, mode="simulator")
+    for iteration in range(5):
+        for tag in tags:
+            await sample(edge, tag["id"], iteration)
+        async with edge.sessions() as session, session.begin():
+            await session.execute(
+                update(WorkerRuntime).values(mode="modbus", heartbeat_at=datetime.now(UTC))
+            )
+    counts = (await edge.api.get("/api/sync/status")).json()
+    assert counts["pending_current"] == 24
+    assert counts["pending_status"] == 1
+    assert counts["pending_history"] == 0
+    await client.cycle()
+    assert all(
+        row["value_numeric"] == 4 for row in (await cloud.api.get("/api/tags/values")).json()
+    )
+    assert (await cloud.api.get("/api/sync/status")).json()["edges"][0]["mode"] == "modbus"
+
+
+async def test_migrate_old_backlog_preserves_durable_rows(pair):
+    from sqlalchemy import text
+
+    edge, cloud, client, identity = pair
+    tag = await numeric_tag(edge, history_enabled=True)
+    engine = edge.sessions.kw["bind"]
+
+    def migrate(connection, revision, downgrade=False):
+        config = Config("server/alembic.ini")
+        config.attributes["connection"] = connection
+        (command.downgrade if downgrade else command.upgrade)(config, revision)
+
+    async with engine.begin() as connection:
+        await connection.run_sync(lambda c: migrate(c, "0012_edge_cloud", True))
+    for value in (10, 11, 12, 13):
+        await sample(edge, tag["id"], value)
+    async with edge.sessions() as session:
+        before = (
+            await session.execute(
+                text("SELECT id,event_id FROM sync_outbox WHERE entity='tag_history' ORDER BY id")
+            )
+        ).all()
+        assert len(before) == 4
+        assert (
+            await session.scalar(
+                text("SELECT count(*) FROM sync_outbox WHERE entity='tag_current_values'")
+            )
+            == 4
+        )
+    async with engine.begin() as connection:
+        await connection.run_sync(lambda c: migrate(c, "head"))
+    async with edge.sessions() as session:
+        after = (
+            await session.execute(
+                text("SELECT id,event_id FROM sync_outbox WHERE entity='tag_history' ORDER BY id")
+            )
+        ).all()
+        assert after == before
+        assert (
+            await session.scalar(
+                select(func.count())
+                .select_from(SyncOutbox)
+                .where(SyncOutbox.entity == "tag_current_values")
+            )
+            == 1
+        )
+    await sample(edge, tag["id"], 14)
+    await drain(client, edge)
+    assert (await cloud.api.get("/api/tags/values")).json()[0]["value_numeric"] == 14
+    async with cloud.sessions() as session:
+        assert await session.scalar(select(func.count()).select_from(TagHistory)) == 5
+
+
+async def test_polling_and_fixed_history_interval_remain_independent(pair):
+    edge, cloud, client, identity = pair
+    tag = await numeric_tag(
+        edge,
+        history_enabled=True,
+        poll_interval_ms=5000,
+        history_mode="fixed_interval",
+        history_interval_ms=60000,
+    )
+    start = datetime.now(UTC) - timedelta(minutes=2)
+    for seconds in range(0, 66, 5):
+        await sample(edge, tag["id"], seconds, now=start + timedelta(seconds=seconds))
+    counts = (await edge.api.get("/api/sync/status")).json()
+    assert counts["pending_current"] == 1 and counts["pending_history"] == 2
+    await drain(client, edge)
+    assert (await cloud.api.get("/api/tags/values")).json()[0]["value_numeric"] == 65
+    async with cloud.sessions() as session:
+        history = list(await session.scalars(select(TagHistory).order_by(TagHistory.recorded_at)))
+        assert [row.value_numeric for row in history] == [0, 60]
+
+
+async def test_command_and_alarm_transitions_are_not_coalesced(pair):
+    from app.worker.alarms import AlarmEngine
+
+    edge, cloud, client, identity = pair
+    tag = await fixture_tag(edge)
+    response = await edge.api.post(f"/api/tags/{tag['id']}/commands", json={"value": True})
+    assert response.status_code == 202
+    processor = CommandProcessor(edge.db, edge.settings, SimulatorSource())
+    await processor.claim()
+    await processor.process(response.json()["id"])
+    rule = await edge.api.post(
+        "/api/alarms/rules",
+        json={
+            "name": "Durable alarm",
+            "tag_id": tag["id"],
+            "operator": "==",
+            "value": True,
+            "enabled": True,
+        },
+    )
+    assert rule.status_code == 201
+    await AlarmEngine(edge.db, edge.settings).tick()
+    alarm = (await edge.api.get("/api/alarms/events")).json()[0]
+    response = await edge.api.post(f"/api/alarms/events/{alarm['id']}/acknowledge")
+    assert response.status_code == 200
+    async with edge.sessions() as session:
+        commands = list(
+            await session.scalars(select(SyncOutbox).where(SyncOutbox.entity == "commands"))
+        )
+        alarms = list(
+            await session.scalars(select(SyncOutbox).where(SyncOutbox.entity == "alarm_events"))
+        )
+        assert {r.payload["status"] for r in commands} >= {
+            "QUEUED",
+            "EXECUTING",
+            "VERIFYING",
+            "SUCCESS",
+        }
+        assert {r.payload["state"] for r in alarms} == {"ACTIVE", "ACKNOWLEDGED"}
+        assert all(r.coalesce_key is None for r in commands + alarms)
+        assert len({r.event_id for r in commands + alarms}) == len(commands + alarms)
+    await drain(client, edge)
+    assert (await cloud.api.get("/api/alarms/events")).json()[0]["state"] == "ACKNOWLEDGED"
+
+
+async def test_bootstrap_existing_state_then_replace_pending(pair):
+    from sqlalchemy import delete
+
+    from app.models import SyncState
+
+    edge, cloud, client, identity = pair
+    tag = await numeric_tag(edge, history_enabled=True)
+    await sample(edge, tag["id"], 10)
+    # First enrollment of existing local data in this isolated database.
+    async with edge.sessions() as session, session.begin():
+        await session.execute(delete(SyncOutbox))
+        await session.execute(delete(SyncState))
+    await initialize(edge.db, edge.settings)
+    await sample(edge, tag["id"], 13)
+    counts = (await edge.api.get("/api/sync/status")).json()
+    assert counts["pending_current"] == 1 and counts["pending_history"] == 2
+    await drain(client, edge)
+    assert (await cloud.api.get("/api/tags/values")).json()[0]["value_numeric"] == 13
+
+
+async def test_unsent_current_delete_is_acknowledged_and_late_insert_ignored(pair):
+    edge, cloud, client, identity = pair
+    tag = await numeric_tag(edge)
+    await drain(client, edge)
+    await sample(edge, tag["id"], 10)
+    older = await latest_pending(edge)
+    response = await edge.api.delete(f"/api/tags/{tag['id']}")
+    assert response.status_code == 204
+    pending = await latest_pending(edge)
+    assert pending["operation"] == "delete"
+    await drain(client, edge)
+    response = await cloud.api.post(
+        "/api/sync/v1/events",
+        json={"events": [older]},
+        headers={"Authorization": "Bearer " + TOKEN, "X-Edge-ID": identity},
+    )
+    assert response.json()["acknowledged"] == [older["event_id"]]
+    from app.models import TagCurrentValue
+
+    async with cloud.sessions() as session:
+        assert await session.scalar(select(func.count()).select_from(TagCurrentValue)) == 0
+    # Snapshot retains the disabled metadata tombstone with no successful value.
+    assert (await cloud.api.get("/api/tags/values")).json()[0]["value_numeric"] is None
+
+
+async def test_current_round_robin_prevents_high_frequency_tag_starvation(pair):
+    edge, cloud, client, identity = pair
+    first = await numeric_tag(edge)
+    tags = [first]
+    for number in range(1, 12):
+        response = await edge.api.post(
+            "/api/tags",
+            json={
+                "name": f"Fast {number}",
+                "key": f"fast_{number}",
+                "device_id": first["device_id"],
+                "register_type": "holding_register",
+                "address": number * 2,
+                "data_type": "float32",
+                "history_enabled": False,
+            },
+        )
+        assert response.status_code == 201
+        tags.append(response.json())
+    await drain(client, edge)
+    client.settings.sync_current_batch_size = 3
+    # Controlled cycles: every Tag updates before every upload, more Tags than capacity.
+    # Sequence-order selection alone would repeatedly send only the first three Tags.
+    for iteration in range(4):
+        for tag in tags:
+            await sample(edge, tag["id"], 100 + iteration)
+        await client.cycle()
+    values = (await cloud.api.get("/api/tags/values")).json()
+    assert len(values) == 12 and all(v["value_numeric"] is not None for v in values)
+    assert max(v["value_numeric"] for v in values) == 103
+    assert (await edge.api.get("/api/sync/status")).json()["pending_current"] <= 12

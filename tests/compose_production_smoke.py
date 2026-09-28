@@ -184,7 +184,7 @@ async def main() -> None:
                 assert redirect.status_code in (301, 302, 307, 308)
                 assert redirect.headers["location"].startswith("https://localhost/")
             await compose("exec", "-T", "api", "alembic", "check")
-            assert "0012_edge_cloud" in await compose("exec", "-T", "api", "alembic", "current")
+            assert "0013_realtime_sync" in await compose("exec", "-T", "api", "alembic", "current")
             assert (await compose("exec", "-T", "frontend", "id", "-u")).strip() == "1000"
             logs = await compose("logs", "--no-color", "api", "frontend", "migrate")
             assert env["POSTGRES_PASSWORD"] not in logs and machine_token not in logs

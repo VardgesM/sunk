@@ -241,3 +241,11 @@ Phase 11 adds standalone/edge/cloud modes, a separate Edge sync process and appl
 ## Production Cloud boundary (11.1)
 
 A dedicated Compose stack serves compiled React through non-root Caddy and routes same-origin API/WSS to an internal FastAPI service. Only Caddy publishes ports. PostgreSQL and backend networks are internal; a one-shot preflight/Alembic service gates API startup. No hardware worker or local Automation engine exists in this stack. Cloud and Edge both gate physical writes using their own MODBUS_WRITES_ENABLED setting. See [operations and trust boundaries](production-cloud.md).
+
+## Phase 11.2 synchronization lanes
+
+Edge capture atomically replaces pending current/runtime snapshots in the existing outbox.
+History and events remain append-only durable deliveries. The sync client uploads current
+state before a bounded historical batch; Cloud mapping sequences reject stale packets.
+ACKs reference exact event UUIDs so a concurrent replacement cannot be lost. Shared browser
+WebSocket and local worker architecture are unchanged. See [details](realtime-sync.md).

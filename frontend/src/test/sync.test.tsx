@@ -9,6 +9,14 @@ import * as client from '../api/client';
 import { activeCommand, type Command } from '../types/commands';
 const base={mode:'edge',installation_id:'installation',pending:17,last_sync_at:null,error:null,edges:[]};
 describe('Edge / Cloud visibility',()=>{
+  it('separates realtime from durable history and control events',async()=>{
+    vi.spyOn(client,'request').mockResolvedValue({...base,pending:10010,pending_current:3,pending_history:10000,pending_status:1,pending_commands:2,pending_events:4,pending_metadata:0});
+    render(<SystemPage/>);
+    expect(await screen.findByText('Realtime pending: 3')).toBeInTheDocument();
+    expect(screen.getByText('History pending: 10000')).toBeInTheDocument();
+    expect(screen.getByText('Command events pending: 2')).toBeInTheDocument();
+    expect(screen.getByText('Alarm / automation events pending: 4')).toBeInTheDocument();
+  });
   it('shows offline durable backlog without pretending telemetry stopped',async()=>{
     vi.spyOn(client,'request').mockResolvedValue({...base,error:'Cloud synchronization failed: ConnectError'});
     render(<SystemPage/>);

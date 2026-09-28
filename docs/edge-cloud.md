@@ -36,7 +36,7 @@ certificates is outside this phase. `SYNC_ALLOW_INSECURE_HTTP=true` is for isola
    docker compose --env-file .env.edge -p monitor-edge -f docker-compose.yml -f docker-compose.edge.yml --profile edge up --build -d
    ```
 
-Both APIs apply migration `0012_edge_cloud` at startup. Back up an existing database
+Both APIs apply migrations through `0013_realtime_sync` at startup. Back up an existing database
 before upgrading. Initial Edge capture briefly locks synchronized tables and queues
 existing records atomically; allow extra time/disk for a large history database.
 
@@ -65,22 +65,11 @@ The first Edge initialization captures existing rows using SQL and then enables 
 in the same transaction. No passwords, sessions, user records, Telegram tokens or machine
 secrets are included. Serial enumeration and worker host details are excluded.
 
-Each cycle polls durable remote requests and sends a batch. `SYNC_INTERVAL_SECONDS`
-defaults to 2; `SYNC_BATCH_SIZE` defaults to 100 (6?500). Capacity is reserved for metadata,
-command results, alarms, current/status, Automation, and history lanes, in that priority
-order. History cannot monopolize control delivery. Missing dependencies are retained and
-retried after a short delay so later parent metadata can progress. Invalid rows remain
-queued with an error indication rather than being silently dropped.
-
-A network failure leaves rows locally and increases retry delay up to
-`SYNC_BACKOFF_MAX_SECONDS` (60 default). `SYNC_TIMEOUT_SECONDS` bounds HTTP calls.
-Only explicitly acknowledged event IDs are removed. PostgreSQL receipts make an upload
-retry harmless. A per-entity sequence prevents late replay overwriting newer state.
-Outages can grow disk usage: monitor the pending count and disk capacity; there is no
-silent backlog deletion or guessed deployment limit. Cloud receipts and identity mappings also
-consume storage and are retained for idempotency; history retention is not a receipt cleanup policy.
-Cloud recovery drains the backlog.
-Local telemetry, control and Automation do not wait for any HTTP call.
+Phase 11.2 replaces unsent current/runtime states atomically instead of appending every
+refresh. Current and history use separate bounded batches; history and all Alarm/Command/
+Automation events remain durable. Only acknowledged UUIDs are removed; delayed state
+cannot overwrite newer mappings. Cloud loss still leaves local collection/control running.
+See [realtime sync, counters, settings and safe upgrade steps](realtime-sync.md).
 
 ## Metadata and identity
 

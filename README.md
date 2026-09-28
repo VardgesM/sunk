@@ -476,3 +476,11 @@ Standalone remains the default. Edge keeps all equipment access and safety local
 ## Phase 11.1: production Cloud preparation
 
 Use [production deployment instructions](docs/production-cloud.md) and `.env.cloud.example` with the **standalone** `docker-compose.cloud.production.yml`. It runs PostgreSQL, API, compiled React/Caddy and a one-shot migration gate; only 80/443 are public. The old Cloud Compose remains for development. `APP_MODE` is canonical; `APPLICATION_MODE` remains compatible. First commissioning keeps physical writes disabled on both Cloud and Edge. No VPS deployment is performed by these repository changes.
+
+## Phase 11.2: realtime sync without replay lag
+
+Pending current/runtime states now coalesce; durable history, alarms and commands retain
+every selected record. Current batches precede history catch-up. Settings/System splits
+pending realtime, history, runtime and event counts. See [design, settings, migration 0013
+and exact safe Cloud/Edge upgrade commands](docs/realtime-sync.md). Existing history policies
+remain configurable (e.g. poll 5 seconds, store history 60 seconds). No automatic deployment.

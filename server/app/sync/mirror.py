@@ -30,7 +30,7 @@ from app.models import (
 from app.services.alarms import notify_event
 from app.services.commands import notify_command
 from app.services.current_values import notify_current
-from app.sync.catalog import columns, table
+from app.sync.catalog import COALESCED_ENTITIES, columns, table
 from app.sync.protocol import Event
 
 
@@ -90,7 +90,8 @@ async def mapping_for(
 
 
 async def apply_event(session: AsyncSession, edge: EdgeInstallation, event: Event) -> None:
-    if await session.get(SyncReceipt, (edge.id, str(event.event_id))):
+    durable = event.entity not in COALESCED_ENTITIES
+    if durable and await session.get(SyncReceipt, (edge.id, str(event.event_id))):
         return
     data = values(event.entity, event.payload)
     if event.entity == "worker_runtime":
@@ -104,7 +105,8 @@ async def apply_event(session: AsyncSession, edge: EdgeInstallation, event: Even
         await receive_result(session, edge, event.payload)
     else:
         await apply_row(session, edge, event, data)
-    session.add(SyncReceipt(edge_id=edge.id, event_id=str(event.event_id)))
+    if durable:
+        session.add(SyncReceipt(edge_id=edge.id, event_id=str(event.event_id)))
     await session.flush()
 
 
@@ -130,6 +132,14 @@ async def apply_row(
         session.add(mapping)
     if event.operation == "delete":
         if not mapping.cloud_key:
+            if entity in COALESCED_ENTITIES:
+                # The unsent insert may have been replaced by a delete. Retain its
+                # sequence tombstone so an older in-flight value cannot resurrect it.
+                mapping.sequence = event.sequence
+                mapping.original = event.payload
+                mapping.deleted = True
+                await session.flush()
+                return
             raise DependencyPending("Prior metadata not received")
         if entity in (
             "locations",

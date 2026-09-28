@@ -163,10 +163,37 @@ async def status(request: Request, session: Session):
     state = await session.get(SyncState, 1)
     edges = list(await session.scalars(select(EdgeInstallation).order_by(EdgeInstallation.name)))
     now = datetime.now(UTC)
+    counts = dict(
+        (
+            await session.execute(
+                select(SyncOutbox.entity, func.count()).group_by(SyncOutbox.entity)
+            )
+        ).all()
+    )
+    current = counts.get("tag_current_values", 0)
+    history = counts.get("tag_history", 0)
+    statuses = sum(counts.get(e, 0) for e in ("connection_runtime", "worker_runtime"))
+    commands = sum(counts.get(e, 0) for e in ("commands", "remote_inbox"))
+    events = sum(
+        counts.get(e, 0)
+        for e in (
+            "alarm_events",
+            "automation_runtime",
+            "automation_executions",
+            "automation_execution_commands",
+        )
+    )
+    total = sum(counts.values())
     return {
+        "pending_current": current,
+        "pending_history": history,
+        "pending_status": statuses,
+        "pending_commands": commands,
+        "pending_events": events,
+        "pending_metadata": total - current - history - statuses - commands - events,
         "mode": request.app.state.settings.application_mode,
         "installation_id": state.installation_id if state else None,
-        "pending": await session.scalar(select(func.count()).select_from(SyncOutbox)),
+        "pending": total,
         "last_sync_at": utc(state.last_sync_at).isoformat()
         if state and state.last_sync_at
         else None,

@@ -42,3 +42,8 @@ def table(name: str):
 
 def columns(name: str):
     return [c for c in table(name).columns if c.name not in EXCLUDED.get(name, set())]
+
+# Only replaceable state. Commands, alarm events and history must NEVER enter this set.
+CURRENT_ENTITIES = ("tag_current_values",)
+STATUS_ENTITIES = ("worker_runtime", "connection_runtime")
+COALESCED_ENTITIES = CURRENT_ENTITIES + STATUS_ENTITIES

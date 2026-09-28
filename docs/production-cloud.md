@@ -104,7 +104,7 @@ dc exec api python -m app.bootstrap
 ```
 
 The migration job validates mode/host/origin/cookies, then upgrades through
-`0012_edge_cloud`. No Phase 11.1 database migration is required. It has `restart: "no"`;
+`0013_realtime_sync` (Phase 11.2; Phase 11.1 itself added no migration). It has `restart: "no"`;
 a failed preflight/migration blocks API startup rather than disappearing in a restart loop.
 The same migration gate may run idempotently during `up`. Bootstrap prompts for username
 and password without echoing the password, and refuses if any user already exists.
@@ -226,7 +226,7 @@ Cloud health does not imply an Edge is connected; inspect both statuses.
 ## Connect the existing Edge PC (later)
 
 1. Back up the local database and environment. Update the checkout and apply the migration
-   through 0012 if not already applied. Keep its existing database volume, credentials,
+   through 0013 if not already applied. Keep its existing database volume, credentials,
    device/Tag configuration, serial settings and project name. Do not load example devices.
 2. If already in Edge mode, reuse the UUID shown in Settings/System. Otherwise create one
    once with `python -c "import uuid; print(uuid.uuid4())"`, and save it as
@@ -303,3 +303,8 @@ services, HTTP, trusted-host/origin rejection, upgrades to TLS with a temporary 
 verifies Secure cookies, authenticated WSS, real static React browser login and machine
 heartbeat, then removes its own volumes. It does not contact a VPS or public ACME service.
 Existing Phase 11 integration tests cover store-and-forward and simulator remote control.
+
+## Phase 11.2 upgrade
+
+Use the [Cloud-first, Edge-second update checklist](realtime-sync.md#safe-update-existing-cloud-first)
+for an already deployed installation. It preserves durable backlog and database volumes.
