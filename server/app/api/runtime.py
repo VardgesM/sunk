@@ -1,11 +1,16 @@
+import logging
 from datetime import UTC, datetime
 from typing import Annotated
 from uuid import uuid4
 
+from alembic.runtime.migration import MigrationContext
+from alembic.util import CommandError
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.version import APP_VERSION
 from app.db.session import get_session
 from app.models import Connection, ConnectionRuntime, Device, Tag, TagCurrentValue, WorkerRuntime
 from app.schemas.runtime import (
@@ -13,6 +18,7 @@ from app.schemas.runtime import (
     ConnectionTest,
     DeviceStatus,
     SerialPortsRead,
+    SystemInfo,
     SystemRuntime,
 )
 from app.schemas.telemetry import utc
@@ -22,6 +28,24 @@ from app.services.runtime import upsert_runtime, worker_alive
 router = APIRouter(prefix="/api", tags=["runtime"])
 Session = Annotated[AsyncSession, Depends(get_session)]
 Identifier = Annotated[int, Path(ge=1, le=2147483647)]
+logger = logging.getLogger(__name__)
+
+
+@router.get("/system/info", response_model=SystemInfo)
+async def system_info(request: Request, session: Session) -> SystemInfo:
+    try:
+        connection = await session.connection()
+        revision = await connection.run_sync(
+            lambda conn: MigrationContext.configure(conn).get_current_revision()
+        )
+    except (SQLAlchemyError, CommandError, OSError, TimeoutError) as exc:
+        logger.exception("Database revision lookup failed")
+        raise HTTPException(503, "Database revision unavailable") from exc
+    return SystemInfo(
+        application_version=APP_VERSION,
+        database_revision=revision,
+        application_mode=request.app.state.settings.application_mode,
+    )
 
 
 @router.get("/system/runtime", response_model=SystemRuntime)

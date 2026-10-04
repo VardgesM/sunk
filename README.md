@@ -478,6 +478,20 @@ Automated full-stack verification uses isolated databases and generated test cre
 It checks all three roles, browser login/logout, simulator commands, alarm acknowledgement, audit,
 WebSocket revocation and mobile layouts. It does not operate physical outputs or send Telegram messages.
 
+## Application information
+
+Settings/System shows the application version, the applied Alembic database revision
+and the API's deployment mode. `GET /api/system/info` requires login and is readable by
+all existing roles, matching the System page. The revision is read from the connected
+database, not inferred from migration files; an uninitialized Alembic table is shown as
+"Not initialized", and lookup failures are reported explicitly.
+
+The application's canonical release version is `[project].version` in
+`server/pyproject.toml`. Backend consumers use installed package metadata through
+`app.core.version`; the frontend displays the API response. After changing the version,
+rebuild the server image or reinstall the native package (`pip install -e ./server`).
+The private frontend package version is npm package metadata, not the application release.
+
 ## Phase 11: Edge / Cloud
 
 Standalone remains the default. Edge keeps all equipment access and safety local; an independent durable sync process uploads batches to Cloud over HTTPS. Cloud reuses authenticated dashboards, history, alarms and the verified command pipeline. See [Edge/Cloud setup and safety](docs/edge-cloud.md) for exact Compose/native Windows commands, machine enrollment, migration `0012_edge_cloud`, offline recovery and testing. Do not expose PostgreSQL publicly.

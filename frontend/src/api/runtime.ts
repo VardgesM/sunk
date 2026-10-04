@@ -1,5 +1,12 @@
 import { request } from './client';
 
+export interface SystemInfo {
+  application_version: string;
+  database_revision: string | null;
+  application_mode: 'standalone' | 'edge' | 'cloud';
+}
+export const getSystemInfo = (signal?: AbortSignal) => request<SystemInfo>('/system/info', { signal });
+
 export interface SystemRuntime {
   application_mode?: 'standalone' | 'edge' | 'cloud'; writes_enabled?: boolean; mode: 'disabled' | 'simulator' | 'modbus' | 'unknown'; alive: boolean; hostname: string | null; heartbeat_at: string | null }
 export interface TransportStatus { detected_port?: string | null; detection_status?: string | null; detected_at?: string | null; detection_error?: string | null; redetect_pending?: boolean; connection_id: number; state: string; last_success: string | null; last_error: string | null; last_error_at: string | null; updated_at: string | null }

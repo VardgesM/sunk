@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, SecretStr
 
-APP_VERSION = "0.1.0"
+from app.core.version import APP_VERSION as APP_VERSION
 
 
 class Strict(BaseModel):

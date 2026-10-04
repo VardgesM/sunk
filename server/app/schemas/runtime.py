@@ -17,6 +17,12 @@ class PortRead(BaseModel):
     product: str | None = None
 
 
+class SystemInfo(BaseModel):
+    application_version: str
+    database_revision: str | None
+    application_mode: Literal["standalone", "edge", "cloud"]
+
+
 class SystemRuntime(BaseModel):
     application_mode: str = "standalone"
     mode: Literal["disabled", "simulator", "modbus", "unknown"]

@@ -30,6 +30,7 @@ from app.api import (
 from app.api.health import router
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
+from app.core.version import APP_VERSION
 from app.db.session import Database
 from app.services.auth import authorize
 from app.services.live import LiveHub, NotificationListener, connect_listener, stale_loop
@@ -75,7 +76,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     from app.api import sync
 
-    app = FastAPI(title="Modbus Monitor API", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="Modbus Monitor API", version=APP_VERSION, lifespan=lifespan)
     app.include_router(router, dependencies=[Depends(authorize)])
     # Static /tags/values must precede the existing /tags/{identifier} route.
     app.include_router(current_values.router, dependencies=[Depends(authorize)])

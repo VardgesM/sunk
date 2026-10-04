@@ -4,6 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.core.version import APP_VERSION
 from app.sync.catalog import PRIORITIES
 
 
@@ -32,7 +33,7 @@ class Batch(BaseModel):
 class Heartbeat(BaseModel):
     model_config = ConfigDict(extra="forbid")
     version: Literal[1] = 1
-    software_version: str = Field(default="0.1.0", max_length=50)
+    software_version: str = Field(default=APP_VERSION, max_length=50)
 
 
 class RemoteAction(BaseModel):

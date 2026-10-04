@@ -12,6 +12,7 @@ from sqlalchemy import Select, case, delete, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
+from app.core.version import APP_VERSION
 from app.db.session import Database
 from app.models import SyncOutbox, SyncState
 from app.sync.catalog import CURRENT_ENTITIES, STATUS_ENTITIES
@@ -74,7 +75,7 @@ class SyncClient:
                 raise ValueError("Unsupported Cloud protocol")
             return data
 
-        await call("POST", "heartbeat", json={"version": 1, "software_version": "0.1.0"})
+        await call("POST", "heartbeat", json={"version": 1, "software_version": APP_VERSION})
         requests = await call("GET", "requests")
         for data in requests["requests"]:
             action = RemoteAction.model_validate(data)
