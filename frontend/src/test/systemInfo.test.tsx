@@ -1,5 +1,5 @@
 import { screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, testAuth } from './render';
 import { AuthContext } from '../auth/context';
 import * as client from '../api/client';
@@ -20,6 +20,14 @@ function syncStatus() {
 }
 
 describe('System application information', () => {
+  beforeEach(() => {
+    vi.spyOn(runtime, 'getSystemDiagnostics').mockResolvedValue({ ...info,
+      checked_at: '2026-10-04T12:00:00Z', database_status: 'UNKNOWN', database_latency_ms: null,
+      sync_status: 'UNKNOWN', last_sync_at: null, pending_sync_count: null,
+      last_telemetry_at: null, telemetry_status: 'UNKNOWN', backup_status: 'UNKNOWN',
+      last_backup_at: null, disk_free_bytes: null, hostname: null, uptime_seconds: null,
+    });
+  });
   it.each(['standalone', 'edge', 'cloud'] as const)('displays API metadata for %s', async mode => {
     const request = vi.spyOn(client, 'request').mockImplementation(async path => {
       if (path === '/system/info') return { ...info, application_mode: mode } as never;
@@ -38,7 +46,7 @@ describe('System application information', () => {
     let finish!: (value: runtime.SystemInfo) => void;
     vi.spyOn(runtime, 'getSystemInfo').mockReturnValue(new Promise(resolve => { finish = resolve; }));
     render(<SystemPage />);
-    expect(screen.getByRole('status')).toHaveTextContent('Loading application information');
+    expect(screen.getByText('Loading application information...')).toHaveAttribute('role', 'status');
     expect(await screen.findByText(/Cloud synchronization is disabled/)).toBeInTheDocument();
     finish(info);
     expect(await screen.findByText('Application version: 9.8.7-test')).toBeInTheDocument();

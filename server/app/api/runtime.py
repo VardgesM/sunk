@@ -18,6 +18,7 @@ from app.schemas.runtime import (
     ConnectionTest,
     DeviceStatus,
     SerialPortsRead,
+    SystemDiagnostics,
     SystemInfo,
     SystemRuntime,
 )
@@ -29,6 +30,15 @@ router = APIRouter(prefix="/api", tags=["runtime"])
 Session = Annotated[AsyncSession, Depends(get_session)]
 Identifier = Annotated[int, Path(ge=1, le=2147483647)]
 logger = logging.getLogger(__name__)
+
+
+@router.get("/system/diagnostics", response_model=SystemDiagnostics)
+async def system_diagnostics(request: Request, session: Session) -> SystemDiagnostics:
+    from app.services.diagnostics import collect
+
+    return await collect(
+        session, request.app.state.settings, getattr(request.app.state, "started_monotonic", None)
+    )
 
 
 @router.get("/system/info", response_model=SystemInfo)

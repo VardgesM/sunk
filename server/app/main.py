@@ -2,6 +2,7 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from time import monotonic
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -65,6 +66,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
             tasks.append(asyncio.create_task(maintenance(app.state.database, config)))
         logger.info("API starting")
+        app.state.started_monotonic = monotonic()
         try:
             yield
         finally:

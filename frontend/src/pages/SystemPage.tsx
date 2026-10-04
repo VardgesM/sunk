@@ -3,6 +3,7 @@ import { Alert, Button, Stack, TextField, Typography } from '@mui/material';
 import { request } from '../api/client';
 import { usePermission } from '../auth/context';
 import ApplicationInfo from '../components/ApplicationInfo';
+import SystemDiagnostics from '../components/SystemDiagnostics';
 interface SyncStatus { mode: string; installation_id: string | null; pending: number; pending_current?: number; pending_history?: number; pending_status?: number; pending_commands?: number; pending_events?: number; pending_metadata?: number; last_sync_at: string | null; error: string | null; edges: {id:string;name:string;enabled:boolean;state:string;mode:string;last_seen_at:string|null}[] }
 interface Delivery {id:string;kind:string;status:string;username:string;expires_at:string;error:string|null}
 export default function SystemPage() {
@@ -14,6 +15,7 @@ export default function SystemPage() {
   return <Stack spacing={2}><Typography variant="h4" component="h1">System / Synchronization</Typography>{error&&<Alert severity="error">{error}</Alert>}
     {admin && <Button href="/settings/backups">Backup &amp; Restore</Button>}
     <ApplicationInfo />
+    <SystemDiagnostics />
     {!status&&<Typography>Loading sync status...</Typography>}{status&&<><Typography>Mode: {status.mode}</Typography>
     {status.mode==='standalone'?<Typography>Local standalone operation. Cloud synchronization is disabled.</Typography>:status.mode==='edge'?<><Typography>Installation: {status.installation_id}</Typography><Typography>Cloud: {status.error?'UNAVAILABLE':status.last_sync_at&&now-Date.parse(status.last_sync_at)<30000?'CONNECTED':'DISCONNECTED'}</Typography><Typography>Pending sync: {status.pending}</Typography>{status.pending_current !== undefined && <Stack><Typography>Realtime pending: {status.pending_current}</Typography><Typography>History pending: {status.pending_history}</Typography><Typography>Status pending: {status.pending_status}</Typography><Typography>Command events pending: {status.pending_commands}</Typography><Typography>Alarm / automation events pending: {status.pending_events}</Typography><Typography>Metadata pending: {status.pending_metadata}</Typography><Typography variant="body2">History catch-up does not require replaying old current values.</Typography></Stack>}<Typography>Last sync: {status.last_sync_at?new Date(status.last_sync_at).toLocaleString():'Never'}</Typography>{status.error&&<Alert severity="warning">{status.error}</Alert>}</>:<>
     {status.edges.length===0&&<Typography>No Edge installations registered.</Typography>}{status.edges.map(edge=><Stack key={edge.id} sx={{border:1,borderColor:'divider',p:2}}><Typography>{edge.name}: {edge.state}</Typography><Typography>Source: {edge.mode}</Typography><Typography>{edge.id}</Typography><Typography>Last seen: {edge.last_seen_at?new Date(edge.last_seen_at).toLocaleString():'Never'}</Typography></Stack>)}

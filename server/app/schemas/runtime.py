@@ -32,6 +32,28 @@ class SystemRuntime(BaseModel):
     heartbeat_at: datetime | None = None
 
 
+class SystemDiagnostics(SystemInfo):
+    checked_at: datetime
+    database_status: Literal["OK", "ERROR", "UNKNOWN"] = "UNKNOWN"
+    database_latency_ms: float | None = None
+    sync_status: Literal[
+        "CONNECTED", "DISCONNECTED", "UNAVAILABLE", "DISABLED", "PAUSED", "DEGRADED", "UNKNOWN"
+    ] = "UNKNOWN"
+    last_sync_at: datetime | None = None
+    pending_sync_count: int | None = None
+    last_telemetry_at: datetime | None = None
+    telemetry_status: Literal["FRESH", "STALE", "DEGRADED", "UNAVAILABLE", "UNKNOWN"] = "UNKNOWN"
+    backup_status: Literal["AVAILABLE", "IN_PROGRESS", "FAILED", "NONE", "UNKNOWN"] = "UNKNOWN"
+    last_backup_at: datetime | None = None
+    disk_free_bytes: int | None = None
+    hostname: str | None = None
+    uptime_seconds: int | None = None
+
+    @field_serializer("checked_at", "last_sync_at", "last_telemetry_at", "last_backup_at")
+    def timestamp(self, value: datetime | None) -> str | None:
+        return utc(value).isoformat() if value else None
+
+
 class SerialPortsRead(BaseModel):
     worker_host: str
     observed_at: datetime

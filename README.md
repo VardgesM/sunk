@@ -492,6 +492,32 @@ The application's canonical release version is `[project].version` in
 rebuild the server image or reinstall the native package (`pip install -e ./server`).
 The private frontend package version is npm package metadata, not the application release.
 
+### System Diagnostics
+
+System also offers an on-demand Diagnostics snapshot (`GET /api/system/diagnostics`),
+with the same authenticated read access as the System page. Use **Refresh diagnostics**
+to refresh it; there is no monitoring service or automatic diagnostics polling.
+
+| Field | Read-only source and meaning |
+| --- | --- |
+| Application version / mode / revision | Existing package metadata, API settings and connected database's Alembic revision. |
+| Database status / latency | Timed `SELECT 1` on the API database session (query latency, not connection setup time). |
+| Sync / last successful sync / pending | Edge `sync_state` and `sync_outbox`; 30-second freshness window matches the existing System view. A restore review fence reports PAUSED. Standalone reports DISABLED. |
+| Cloud sync | CONNECTED when all enabled installations have recent heartbeats; DEGRADED for a mixture, DISCONNECTED when none are recent. Cloud cannot know the Edge outbox size or last completed Edge sync cycle, so those fields are null. |
+| Last successful telemetry / freshness | Existing current-value source timestamps for enabled Tags/Devices/Connections. Uses each Tag's polling interval and configured stale multiplier, not the time an error/quality row was updated. GOOD with known source and recent timestamp is FRESH; failed quality is UNAVAILABLE; aged data is STALE; mixed states are DEGRADED. This describes stored telemetry, not a new hardware connection test. |
+| Backup status / last successful backup | Existing local backup metadata and archive presence, excluding uploaded archives. The time is the latest successfully generated backup's recorded creation time; completion time is not stored. FAILED or IN_PROGRESS may accompany an older successful backup. No archive decryption or validation is performed. |
+| Disk free | Space available on the API's configured backup filesystem; GiB in the UI. Not PostgreSQL's or a remote Edge's disk. |
+| Hostname / uptime | API host/container name and monotonic time since this API process completed startup, not machine boot time or worker uptime. |
+
+Unavailable metrics return null/UNKNOWN (no samples/enabled Tags, unknown source/future
+timestamp, uninitialized Alembic table, missing sync state/Cloud installations, unreadable
+backup metadata, filesystem or OS failure). No backups reports NONE; a missing backup
+directory is not created and has unknown disk space. No secrets, raw error text or full
+paths are returned. Independent metrics remain available after a probe failure, but a
+complete database outage can also prevent session authentication; the UI then reports
+the request failure rather than bypassing login. Relative times refer to the displayed
+snapshot time; exact backup/snapshot times use the browser's local timezone.
+
 ## Phase 11: Edge / Cloud
 
 Standalone remains the default. Edge keeps all equipment access and safety local; an independent durable sync process uploads batches to Cloud over HTTPS. Cloud reuses authenticated dashboards, history, alarms and the verified command pipeline. See [Edge/Cloud setup and safety](docs/edge-cloud.md) for exact Compose/native Windows commands, machine enrollment, migration `0012_edge_cloud`, offline recovery and testing. Do not expose PostgreSQL publicly.
