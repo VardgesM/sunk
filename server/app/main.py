@@ -13,6 +13,7 @@ from app.api import (
     alarms,
     auth,
     automation,
+    backups,
     commands,
     connections,
     current_values,
@@ -82,6 +83,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(sync.router, dependencies=[Depends(authorize)])
     app.include_router(auth.router)
     app.include_router(users.router, dependencies=[Depends(authorize)])
+    app.include_router(backups.router, dependencies=[Depends(authorize)])
     app.include_router(live.router)
     app.include_router(history.router, dependencies=[Depends(authorize)])
     app.include_router(runtime.router, dependencies=[Depends(authorize)])

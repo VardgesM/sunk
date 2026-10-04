@@ -1,14 +1,23 @@
 # Modbus Monitor
 
+## Backup & Restore (Phase 12)
+
+ADMIN users can open **Settings / Backup & Restore** for encrypted database backups,
+validated offline restoration and portable configuration export/import. New migration:
+`0014_backups` after `0013_realtime_sync`. Rebuild the API image for PostgreSQL client tools
+and apply `alembic upgrade head` through the existing deployment workflow; existing data is preserved.
+Backup volumes persist separately from PostgreSQL. [Contents, limits, exact restore commands,
+replacement Edge PC and recovery safety](docs/backup-restore.md).
+
 A configurable industrial monitoring platform. FastAPI and the worker share one Python package;
-React/TypeScript/MUI provides the interface. Phase 10 adds local authentication, roles, user management and audit logging alongside the Dashboard Builder, Alarms, Telegram, Automation, verified commands, RTU/TCP reads, simulator
+React/TypeScript/MUI provides the interface. Phase 12 adds encrypted backup/recovery and portable configuration transfer to Edge/Cloud synchronization, local authentication, roles, user management and audit logging alongside the Dashboard Builder, Alarms, Telegram, Automation, verified commands, RTU/TCP reads, simulator
 telemetry, current values, history and WebSocket charts. Physical writes are disabled by default.
 Authorization is enforced by the API; worker Automation remains independent of interactive sessions.
 
 ## Repository
 
 - `server/app`: API, shared settings/database infrastructure, schemas, and separate worker entry point.
-- `server/alembic`: foundation, configuration, current values, commands and Automation, Alarms, serial binding, dashboards and `0011_auth` migrations.
+- `server/alembic`: schema migrations through `0014_backups`, including authentication and Edge/Cloud synchronization.
 - `frontend/src`: existing shell, four configuration pages, API client, health indicator and UI tests.
 - `tests`: health/worker tests, relational CRUD tests, migration checks and opt-in PostgreSQL integration.
 - `docs`: [architecture](docs/architecture.md), [database](docs/database.md), [Modbus boundary](docs/modbus.md).

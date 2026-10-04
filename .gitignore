@@ -19,5 +19,7 @@ dist/
 # Deployment backups and private TLS material
 backups/
 *.dump
+*.mmbak
+modbus-monitor-config*.json
 *.key
 *.pem

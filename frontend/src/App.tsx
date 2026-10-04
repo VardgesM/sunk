@@ -11,6 +11,7 @@ import { SourceMode } from './components/RuntimeStatus';
 
 
 const SystemPage = lazy(() => import('./pages/SystemPage'));
+const BackupRestorePage = lazy(() => import('./pages/BackupRestorePage'));
 const UsersPage = lazy(() => import('./pages/UsersPage'));
 const AuditPage = lazy(() => import('./pages/AuditPage'));
 const DashboardsPage = lazy(() => import('./pages/DashboardsPage'));
@@ -71,6 +72,7 @@ export default function App() {
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/users" element={<Can permission="users"><UsersPage /></Can>} />
           <Route path="/audit" element={<Can permission="audit"><AuditPage /></Can>} />
+          <Route path="/settings/backups" element={<Can permission="users"><BackupRestorePage /></Can>} />
           <Route path="/dashboard" element={<DashboardsPage />} />
           <Route path="/locations" element={<LocationsPage />} />
           <Route path="/connections" element={<ConnectionsPage />} />

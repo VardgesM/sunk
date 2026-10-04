@@ -1,9 +1,14 @@
-FROM python:3.12-slim
+FROM python:3.12-slim-trixie
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
 COPY pyproject.toml ./
 COPY app ./app
-RUN pip install --no-cache-dir . && useradd --create-home appuser
+RUN apt-get update && apt-get install -y --no-install-recommends postgresql-client-17 \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir . && useradd --create-home appuser \
+    && mkdir -p /var/lib/modbus-monitor/backups \
+    && chown appuser:appuser /var/lib/modbus-monitor/backups \
+    && chmod 700 /var/lib/modbus-monitor/backups
 COPY alembic.ini ./
 COPY alembic ./alembic
 USER appuser

@@ -1,5 +1,15 @@
 # PostgreSQL configuration model
 
+## Phase 12 - migration `0014_backups`
+
+`configuration_identities` maps a portable UUID to an entity kind/local integer ID, with
+a unique `(entity,local_id)` constraint. This derived export bookkeeping is independent of
+sync identities; deleted configuration leaves a tombstone preventing accidental import replay.
+It contains no secrets or runtime telemetry. `recovery_state` records the last full restore
+and the explicit Edge/Cloud reconciliation fence. Full backup artifacts and operation status
+remain outside the database being restored, in a dedicated locked backup directory.
+Previous migrations are unchanged. See [backup format and restore procedure](backup-restore.md).
+
 Configuration uses four relational tables; current values and Phase 4 history use separate tables.
 PostgreSQL is the sole runtime store; there are no
 JSON configuration blobs or seeded devices, registers, ports, or sensors. All IDs are integer

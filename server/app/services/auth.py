@@ -90,6 +90,8 @@ def origin_check(request: Request) -> None:
 
 
 def required_permission(method: str, path: str) -> str:
+    if path.startswith(("/api/system/backups", "/api/system/restores", "/api/system/configuration")):
+        return "users"  # ADMIN only, including downloads and previews.
     if (
         path.startswith(("/api/users", "/api/audit", "/api/notifications"))
         or path == "/api/system/serial-ports"
@@ -129,7 +131,8 @@ async def authorize(request: Request, session: AsyncSession = Depends(get_sessio
     ):
         path = request.url.path
         allowed = path.startswith(
-            ("/api/auth/", "/api/users", "/api/sync/installations")
+            ("/api/auth/", "/api/users", "/api/sync/installations",
+             "/api/system/backups", "/api/system/restores")
         ) or required_permission(request.method, path) in ("command", "acknowledge")
         if not allowed:
             raise HTTPException(

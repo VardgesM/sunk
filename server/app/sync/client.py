@@ -50,7 +50,11 @@ class SyncClient:
         self.current_cursor: str | None = None
 
     async def cycle(self) -> None:
+        from app.services.recovery import sync_blocked
+
         async with self.database.sessions() as session:
+            if await sync_blocked(session):
+                raise ValueError("Synchronization paused after database restore; reconciliation required")
             state = await session.get(SyncState, 1)
             if not state or state.mode != "edge":
                 raise ValueError("Sync requires initialized Edge database")

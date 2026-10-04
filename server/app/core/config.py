@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     postgres_password: SecretStr
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+    backup_directory: str = ".local/backups"
+    backup_retention_count: int = Field(default=10, ge=1, le=1000)
+    backup_max_upload_mb: int = Field(default=2048, ge=1, le=102400)
+    backup_max_expanded_mb: int = Field(default=8192, ge=1, le=409600)
+    backup_timeout_seconds: int = Field(default=1800, ge=10, le=86400)
+    configuration_max_upload_mb: int = Field(default=10, ge=1, le=100)
     worker_heartbeat_seconds: float = Field(default=10, ge=1, le=3600)
     telegram_timezone: str = "UTC"
 

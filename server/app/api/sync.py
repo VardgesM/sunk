@@ -43,6 +43,10 @@ async def machine(request: Request, session: Session) -> EdgeInstallation:
         or not hmac.compare_digest(edge.token_hash, digest(token))
     ):
         raise HTTPException(401, "Invalid Edge credentials")
+    from app.services.recovery import sync_blocked
+
+    if await sync_blocked(session):
+        raise HTTPException(503, "Synchronization paused after database restore; reconciliation required")
     return edge
 
 

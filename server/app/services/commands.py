@@ -22,8 +22,9 @@ async def notify_command(session: AsyncSession, identifier: int) -> None:
         )
 
 
-def validate_write(tag: Tag, device: Device, connection: Connection, value: Decimal | bool) -> None:
-    if not (tag.enabled and device.enabled and connection.enabled):
+def validate_write(tag: Tag, device: Device, connection: Connection, value: Decimal | bool,
+                   *, require_enabled: bool = True) -> None:
+    if require_enabled and not (tag.enabled and device.enabled and connection.enabled):
         raise ValueError("Tag, Device and Connection must all be enabled")
     if not tag.writable or tag.register_type not in ("coil", "holding_register"):
         raise ValueError("Tag must be writable and use coil or holding_register")

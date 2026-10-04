@@ -13,6 +13,12 @@ x-server-environment: &server-environment
   AUTH_LOGIN_ATTEMPTS: ${AUTH_LOGIN_ATTEMPTS:-10}
   AUTH_LOGIN_WINDOW_SECONDS: ${AUTH_LOGIN_WINDOW_SECONDS:-900}
   LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  BACKUP_DIRECTORY: /var/lib/modbus-monitor/backups
+  BACKUP_RETENTION_COUNT: ${BACKUP_RETENTION_COUNT:-10}
+  BACKUP_MAX_UPLOAD_MB: ${BACKUP_MAX_UPLOAD_MB:-2048}
+  BACKUP_MAX_EXPANDED_MB: ${BACKUP_MAX_EXPANDED_MB:-8192}
+  BACKUP_TIMEOUT_SECONDS: ${BACKUP_TIMEOUT_SECONDS:-1800}
+  CONFIGURATION_MAX_UPLOAD_MB: ${CONFIGURATION_MAX_UPLOAD_MB:-10}
   CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:5173","http://127.0.0.1:5173"]}
   WORKER_HEARTBEAT_SECONDS: ${WORKER_HEARTBEAT_SECONDS:-10}
   SERIAL_SCAN_SECONDS: ${SERIAL_SCAN_SECONDS:-5}
@@ -53,6 +59,8 @@ services:
 
   api:
     build: ./server
+    volumes:
+      - backups:/var/lib/modbus-monitor/backups
     environment: *server-environment
     command: ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000"]
     ports:
@@ -124,3 +132,4 @@ services:
 
 volumes:
   postgres_data:
+  backups:

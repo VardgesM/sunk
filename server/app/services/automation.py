@@ -83,7 +83,8 @@ async def rule_read(session: AsyncSession, rule: AutomationRule) -> RuleRead:
     )
 
 
-async def validate_rule(session: AsyncSession, payload: RuleInput) -> None:
+async def validate_rule(session: AsyncSession, payload: RuleInput,
+                        *, require_enabled: bool = True) -> None:
     ids = {c.tag_id for c in payload.conditions} | {a.target_tag_id for a in payload.actions}
     rows = (
         await session.execute(
@@ -104,7 +105,7 @@ async def validate_rule(session: AsyncSession, payload: RuleInput) -> None:
             raise HTTPException(422, "Condition value type does not match its Tag")
     for action in payload.actions:
         try:
-            validate_write(*by_id[action.target_tag_id], action.value)
+            validate_write(*by_id[action.target_tag_id], action.value, require_enabled=require_enabled)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
 

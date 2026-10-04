@@ -8,6 +8,7 @@ from app.models.alarms import (
     TelegramDestination,
 )
 from app.models.auth import AuditLog, AuthSession, LoginLimit, User
+from app.models.backup import ConfigurationIdentity, RecoveryState
 from app.models.command import Command
 from app.models.configuration import Connection, Device, Location, Tag
 from app.models.current_value import TagCurrentValue
@@ -30,6 +31,8 @@ from app.models.sync import (
 )
 
 __all__ = [
+    "ConfigurationIdentity",
+    "RecoveryState",
     "Command",
     "Connection",
     "Device",

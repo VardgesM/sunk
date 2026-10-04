@@ -82,7 +82,8 @@ async def detail(session: AsyncSession, row: Dashboard) -> DashboardDetail:
     )
 
 
-async def validate_tags(session: AsyncSession, payload: WidgetInput) -> None:
+async def validate_tags(session: AsyncSession, payload: WidgetInput,
+                        *, require_enabled: bool = True) -> None:
     tags = list(
         await session.scalars(select(Tag).where(Tag.id.in_(payload.tag_ids)).with_for_update())
     )
@@ -96,7 +97,7 @@ async def validate_tags(session: AsyncSession, payload: WidgetInput) -> None:
             raise HTTPException(422, "This widget requires boolean Tags")
         if payload.type in ("switch", "setpoint"):
             register = "coil" if payload.type == "switch" else "holding_register"
-            if not tag.enabled or not tag.writable or tag.register_type != register:
+            if (require_enabled and not tag.enabled) or not tag.writable or tag.register_type != register:
                 raise HTTPException(
                     422, "Control requires an enabled, writable Tag of the supported register type"
                 )

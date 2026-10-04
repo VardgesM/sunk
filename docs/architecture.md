@@ -1,5 +1,18 @@
 # Architecture
 
+## Backup and configuration transfer
+
+Phase 12 adds an ADMIN-only API and System page for encrypted PostgreSQL snapshots and
+portable configuration transfer. Backup artifacts live on a private persistent volume;
+secrets are excluded from the settings snapshot. Full database dumps are encrypted because
+they contain authentication hashes and private runtime data. The API validates restore
+archives but cannot replace a live database: an offline maintenance command stages and
+checks a new database, then switches atomically while retaining the original for rollback.
+Configuration imports validate the relational graph and commit once; imported Connections,
+Automation and Alarms start disabled. Cloud cannot become a configuration authority through
+import. Post-restore sync is fenced until distributed state is reviewed; normal polling,
+Automation and outbox semantics are unchanged. See [recovery operations](backup-restore.md).
+
 ## Components
 
 The monorepo contains one Python package (`server/app`) and a React/TypeScript client.

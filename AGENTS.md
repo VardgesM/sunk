@@ -79,3 +79,9 @@
 - Historical telemetry is durable and must never be silently coalesced.
 - Realtime current state must not be blocked by historical catch-up.
 - Older synchronized state must never overwrite newer Tag state.
+
+- Backup download, restore and configuration transfer are ADMIN-only with backend authorization and CSRF.
+- Full database backups contain sensitive data and must be encrypted; never persist or log backup passphrases.
+- Validate restores in a separate database before replacement; retain the old database and never replay unfinished commands.
+- Configuration imports are transactional and must not silently overwrite existing entities or enable physical connections/rules.
+- Point-in-time Edge/Cloud restores require reconciliation before synchronization resumes.
