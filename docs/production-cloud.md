@@ -110,6 +110,37 @@ The same migration gate may run idempotently during `up`. Bootstrap prompts for 
 and password without echoing the password, and refuses if any user already exists.
 Choose a strong production password even though the application permits short passwords.
 
+### Source permissions and restrictive umask
+
+You can keep `umask 077` when cloning/pulling and building. Docker normally preserves
+[copied source permissions](https://docs.docker.com/reference/dockerfile/#copy), so host
+files with mode `600` used to make `/app/app/core/config.py` inaccessible to `appuser`.
+The server Dockerfile now sets application and Alembic directories to `755`, and their
+files plus `pyproject.toml`/`alembic.ini` to `644`, **inside the image**. This covers the
+API, migration job and the shared worker/sync image; they still run as non-root.
+The frontend images already assign their runtime files to the non-root Node/Caddy user.
+
+Remove any manual recursive source `chmod` or `umask 022` workaround after rebuilding
+and recreating the affected containers with the updated Dockerfile. A process restart
+alone continues using the old image. Use the normal update commands below; no schema
+change is needed for this fix. Do not relax `.env.cloud`: keep it at `600` and retain
+`umask 077` for secrets/backups. Environment files remain excluded from build contexts,
+and no runtime data, secret or certificate directory has its permissions broadened.
+Source bind mounts override image contents and still require appropriate host access;
+the production Compose stack does not bind-mount application source.
+
+Regression check (from the repository root):
+
+```sh
+python tests/docker_permissions_smoke.py
+```
+
+This opt-in test builds all three Dockerfiles with TAR context files at `600` and
+directories at `700`, including on Windows. It checks non-root source imports,
+environment-file exclusion, Alembic upgrade/check on disposable PostgreSQL, API health,
+Vite and Caddy serving. It uses unique local test resources and leaves running
+installations untouched.
+
 ## Initial IP testing versus final HTTPS
 
 Temporary IP test:
