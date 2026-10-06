@@ -1,0 +1,19 @@
+# Optional, administrator-enabled host runner bridge. No Docker socket is mounted.
+# Compose project name and original production volumes must remain unchanged.
+services:
+  api:
+    # Outbound HTTPS for GitHub. No API host port is published.
+    networks: [database, backend, update_downloads]
+    environment:
+      UPDATE_ENABLED: "true"
+      UPDATE_DIRECTORY: /var/lib/modbus-monitor/updates
+      UPDATE_REPOSITORY: ${UPDATE_REPOSITORY:-VardgesM/sunk}
+      UPDATE_DISK_RESERVE_MB: ${UPDATE_DISK_RESERVE_MB:-4096}
+    volumes:
+      - type: bind
+        source: ${UPDATE_SHARED_DIRECTORY:?Set an absolute host updater shared directory}
+        target: /var/lib/modbus-monitor/updates
+        bind:
+          create_host_path: false
+networks:
+  update_downloads: {}

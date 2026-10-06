@@ -1,0 +1,15 @@
+{
+  "handler": "cloud-compose-v1",
+  "project_name": "modbus-cloud",
+  "project_directory": "/opt/modbus-monitor",
+  "compose_files": [
+    "/opt/modbus-monitor/docker-compose.cloud.production.yml",
+    "/opt/modbus-monitor/deploy/update/cloud.compose.yml"
+  ],
+  "env_file": "/opt/modbus-monitor/.env.cloud",
+  "shared_directory": "/opt/modbus-monitor-update/shared",
+  "private_directory": "/opt/modbus-monitor-update/private",
+  "command_timeout_seconds": 1800,
+  "health_timeout_seconds": 120,
+  "disk_reserve_mb": 4096
+}

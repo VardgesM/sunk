@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     postgres_password: SecretStr
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+    update_enabled: bool = False
+    update_directory: str = ".local/updates"
+    update_repository: str = Field(default="VardgesM/sunk", pattern=r"^[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+$")
+    update_disk_reserve_mb: int = Field(default=4096, ge=256, le=1048576)
     backup_directory: str = ".local/backups"
     backup_retention_count: int = Field(default=10, ge=1, le=1000)
     backup_max_upload_mb: int = Field(default=2048, ge=1, le=102400)

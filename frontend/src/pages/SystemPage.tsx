@@ -14,6 +14,7 @@ export default function SystemPage() {
   useEffect(()=>{let active=true;async function refresh(){try{const s=await request<SyncStatus>('/sync/status');const r=s.mode==='cloud'?await request<Delivery[]>('/sync/requests'):[];if(active){setStatus(s);setRows(r);setNow(Date.now());setError('');}}catch(e){if(active)setError(String(e));}}void refresh();const timer=setInterval(()=>void refresh(),5000);return()=>{active=false;clearInterval(timer);};},[]);
   return <Stack spacing={2}><Typography variant="h4" component="h1">System / Synchronization</Typography>{error&&<Alert severity="error">{error}</Alert>}
     {admin && <Button href="/settings/backups">Backup &amp; Restore</Button>}
+    {admin && <Button href="/settings/updates">Updates</Button>}
     <ApplicationInfo />
     <SystemDiagnostics />
     {!status&&<Typography>Loading sync status...</Typography>}{status&&<><Typography>Mode: {status.mode}</Typography>

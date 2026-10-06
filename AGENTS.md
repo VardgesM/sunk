@@ -85,3 +85,7 @@
 - Validate restores in a separate database before replacement; retain the old database and never replay unfinished commands.
 - Configuration imports are transactional and must not silently overwrite existing entities or enable physical connections/rules.
 - Point-in-time Edge/Cloud restores require reconciliation before synchronization resumes.
+
+- Updates are explicitly requested by an ADMIN; deployment runs outside the API without a Docker socket in application containers.
+- Preserve environment/write settings, persistent volumes, encrypted backup and previous release before deployment.
+- Never auto-downgrade migrations or claim rollback success after an unverified database change. Native Edge service lifecycles must not be guessed.

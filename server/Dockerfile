@@ -10,9 +10,9 @@ RUN find app -type d -exec chmod 755 {} + \
 RUN apt-get update && apt-get install -y --no-install-recommends postgresql-client-17 \
     && rm -rf /var/lib/apt/lists/* \
     && pip install --no-cache-dir . && useradd --create-home appuser \
-    && mkdir -p /var/lib/modbus-monitor/backups \
-    && chown appuser:appuser /var/lib/modbus-monitor/backups \
-    && chmod 700 /var/lib/modbus-monitor/backups
+    && mkdir -p /var/lib/modbus-monitor/backups /var/lib/modbus-monitor/updates \
+    && chown appuser:appuser /var/lib/modbus-monitor/backups /var/lib/modbus-monitor/updates \
+    && chmod 700 /var/lib/modbus-monitor/backups /var/lib/modbus-monitor/updates
 COPY alembic.ini ./
 COPY alembic ./alembic
 RUN find alembic -type d -exec chmod 755 {} + \

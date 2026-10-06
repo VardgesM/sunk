@@ -27,12 +27,14 @@ x-api: &api
     REMOTE_COMMAND_MAX_AGE_SECONDS: ${REMOTE_COMMAND_MAX_AGE_SECONDS:-60}
     LOG_LEVEL: ${LOG_LEVEL:-INFO}
     BACKUP_DIRECTORY: /var/lib/modbus-monitor/backups
+    UPDATE_DIRECTORY: /var/lib/modbus-monitor/updates
+    UPDATE_REPOSITORY: ${UPDATE_REPOSITORY:-VardgesM/sunk}
     BACKUP_RETENTION_COUNT: ${BACKUP_RETENTION_COUNT:-10}
     BACKUP_MAX_UPLOAD_MB: ${BACKUP_MAX_UPLOAD_MB:-2048}
     BACKUP_MAX_EXPANDED_MB: ${BACKUP_MAX_EXPANDED_MB:-8192}
     BACKUP_TIMEOUT_SECONDS: ${BACKUP_TIMEOUT_SECONDS:-1800}
     CONFIGURATION_MAX_UPLOAD_MB: ${CONFIGURATION_MAX_UPLOAD_MB:-10}
-  volumes: [cloud_backups:/var/lib/modbus-monitor/backups]
+  volumes: [cloud_backups:/var/lib/modbus-monitor/backups, cloud_updates:/var/lib/modbus-monitor/updates]
   security_opt: [no-new-privileges:true]
   cap_drop: [ALL]
   logging: &logging
@@ -114,6 +116,7 @@ networks:
   public: {}
 volumes:
   cloud_backups:
+  cloud_updates:
   cloud_postgres:
   caddy_data:
   caddy_config:

@@ -262,3 +262,16 @@ History and events remain append-only durable deliveries. The sync client upload
 state before a bounded historical batch; Cloud mapping sequences reject stale packets.
 ACKs reference exact event UUIDs so a concurrent replacement cannot be lost. Shared browser
 WebSocket and local worker architecture are unchanged. See [details](realtime-sync.md).
+
+## Manual updater (Phase 13)
+
+An ADMIN requests release preparation through the existing session/CSRF-protected API.
+The API validates GitHub release assets and creates a Phase 12 encrypted backup. A separate
+opt-in host runner deploys only the supported production Cloud Compose topology. It uses
+operator-owned Compose/env files and never receives arbitrary commands from the browser.
+The shared atomic filesystem journal remains available when the database/API cannot start;
+there is no new application database table. No Docker socket is available to API containers.
+The optional updater override permits outbound GitHub HTTPS without exposing another port.
+Previous images and encrypted recovery material remain available. Same-schema failures can
+roll back images; migration-attempt failures require explicit offline recovery. Native Edge
+installation remains operator-managed. See [release/update/recovery operations](update.md).

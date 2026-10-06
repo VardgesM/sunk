@@ -1,5 +1,9 @@
 # Modbus Monitor
 
+Manual release checks and safe Cloud updates: [Updater v1](docs/update.md).
+System → Updates is ADMIN-only; installation requires the opt-in host runner.
+Native Edge updates remain operator-managed. There are no scheduled installations.
+
 ## Backup & Restore (Phase 12)
 
 ADMIN users can open **Settings / Backup & Restore** for encrypted database backups,
