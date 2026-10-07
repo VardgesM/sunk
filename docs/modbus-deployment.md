@@ -150,3 +150,40 @@ bounded to 125 registers or 2000 bits. Each tag is decoded using its own width, 
 scale and offset, then persisted independently with the common acquisition timestamp. Tags not
 yet due are not included. Commands still read back their exact target independently under the
 same transport lock. A rejected/truncated block marks the group BAD, rather than inventing values.
+
+
+## RTU request spacing
+
+The worker observes quiet time after each RTU response or failed request before
+transmitting the next one, including between command write and read-back. The
+existing per-physical-port lock remains held; TCP is unchanged. The minimum is
+t3.5 from [Modbus Serial Line V1.02](https://www.modbus.org/docs/Modbus_over_serial_line_V1_02.pdf):
+3.5 configured character times up to 19200 baud, or 1.75 ms above it.
+`MODBUS_RTU_MIN_GAP_MS` adds a configurable floor (default 20 ms, range 0–250 ms)
+for device turnaround/USB adapters. Zero retains the protocol minimum. Restart
+the native worker after changing this environment setting; Docker workers also
+receive it through Compose. This is transport timing, not a change to Tag polling,
+quality expiry, automation thresholds, or write enablement. No request is retried
+by the timing adapter, especially no uncertain write. A pause is not a remedy for
+faulty wiring, termination, power, or interference; compare logs before/after.
+
+### Field check (2026-10-07)
+
+The native Linux worker was restarted once with the default 20 ms floor, after
+234 isolated RTU/Modbus/command/automation/serial-binding tests passed. Equal
+five-minute log windows on the existing four-slave bus contained 24 device
+response timeouts before the change and 17 afterward. This short observation is
+not proof that pacing fixed the physical issue: communication errors remain.
+All 13 enabled Tags were GOOD at the final snapshot, but intermittent COMM_ERROR
+states occurred during observation. No diagnostic physical write was issued;
+previously enabled automation continued through the existing command processor.
+
+The operator reports a daisy-chain longer than 10 m without external termination.
+Check existing built-in termination before fitting resistors: termination belongs
+only at the two physical ends and must match the cable impedance (typically
+120 ohms for RS-485). See [TI RS-485 termination guidance](https://www.ti.com/document-viewer/lit/html/ssztb23).
+Also check twisted-pair wiring, signal reference according to device manuals,
+supply stability and separation from load/mains wiring. Cable length alone does
+not prove the cause. Do not increase the freshness threshold simply to conceal
+missing data. Turn off controlled loads safely and power down before wiring work;
+invalid telemetry currently blocks rules but does not automatically turn outputs off.

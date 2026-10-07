@@ -11,12 +11,13 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
 
-from pymodbus.client import AsyncModbusSerialClient, AsyncModbusTcpClient
+from pymodbus.client import AsyncModbusTcpClient
 from pymodbus.exceptions import ModbusException, ModbusIOException
 
 from app.core.config import Settings
 from app.services.current_values import Reading
 from app.worker.decoder import decode_registers, register_count
+from app.worker.rtu_timing import PacedSerialClient
 from app.worker.sources import CommunicationError, DecodeError, PollTag, Transport
 
 logger = logging.getLogger(__name__)
@@ -28,7 +29,7 @@ READ_METHODS = {
 }
 
 
-def create_client(config: Transport) -> Any:
+def create_client(config: Transport, *, rtu_min_gap_ms: float = 20) -> Any:
     common = {
         "timeout": config.timeout_ms / 1000,
         "retries": 0,
@@ -37,8 +38,9 @@ def create_client(config: Transport) -> Any:
     }
     if config.protocol == "modbus_tcp":
         return AsyncModbusTcpClient(config.host, port=config.port, **common)
-    return AsyncModbusSerialClient(
+    return PacedSerialClient(
         config.serial_port,
+        minimum_gap_ms=rtu_min_gap_ms,
         baudrate=config.baud_rate,
         parity=config.parity,
         stopbits=config.stop_bits,
@@ -78,12 +80,15 @@ class ConnectionManager:
     def __init__(
         self,
         settings: Settings,
-        factory: Callable[[Transport], Any] = create_client,
+        factory: Callable[[Transport], Any] | None = None,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         if settings.application_mode == "cloud":
             raise RuntimeError("Cloud is forbidden from opening Modbus transports")
-        self.settings, self.factory, self.clock = settings, factory, clock
+        self.settings, self.clock = settings, clock
+        self.factory = factory or (
+            lambda config: create_client(config, rtu_min_gap_ms=settings.modbus_rtu_min_gap_ms)
+        )
         self.entries: dict[int, ClientState] = {}
         self.conflicts: set[int] = set()
         self.bus_locks: dict[str, asyncio.Lock] = {}

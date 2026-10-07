@@ -94,7 +94,7 @@ def test_invalid_decoding(words: list[int], dtype: str) -> None:
 async def test_client_factory_uses_stored_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
     tcp, serial = Mock(), Mock()
     monkeypatch.setattr("app.worker.modbus.AsyncModbusTcpClient", tcp)
-    monkeypatch.setattr("app.worker.modbus.AsyncModbusSerialClient", serial)
+    monkeypatch.setattr("app.worker.modbus.PacedSerialClient", serial)
     create_client(transport(host="configured.example", port=1502, timeout_ms=750))
     assert tcp.call_args.args == ("configured.example",)
     assert tcp.call_args.kwargs["port"] == 1502
