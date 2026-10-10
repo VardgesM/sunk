@@ -37,7 +37,7 @@ def permitted(name: str) -> bool:
         return False
     if path.suffix.lower() in {".dump", ".mmbak", ".pem", ".key", ".pyc", ".db", ".sqlite"}:
         return False
-    return name.startswith(("server/", "frontend/")) or name == "deploy/cloud/Caddyfile"
+    return name.startswith(("server/", "frontend/"))
 
 
 def sha256(path: Path) -> str:
@@ -114,7 +114,7 @@ def unpack(archive: Path, manifest: ReleaseManifest, target: Path, installed: st
             "server/app/main.py",
             "frontend/Dockerfile.production",
             "frontend/package-lock.json",
-            "deploy/cloud/Caddyfile",
+            "frontend/nginx.conf",
         ):
             if required not in seen:
                 raise UpdateError("Release is incomplete")

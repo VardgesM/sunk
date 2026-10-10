@@ -528,7 +528,7 @@ Standalone remains the default. Edge keeps all equipment access and safety local
 
 ## Phase 11.1: production Cloud preparation
 
-Use [production deployment instructions](docs/production-cloud.md) and `.env.cloud.example` with the **standalone** `docker-compose.cloud.production.yml`. It runs PostgreSQL, API, compiled React/Caddy and a one-shot migration gate; only 80/443 are public. The old Cloud Compose remains for development. `APP_MODE` is canonical; `APPLICATION_MODE` remains compatible. First commissioning keeps physical writes disabled on both Cloud and Edge. No VPS deployment is performed by these repository changes.
+Use [production deployment instructions](docs/production-cloud.md) and `.env.cloud.example` with the **standalone** `docker-compose.cloud.production.yml`. It runs PostgreSQL, API, compiled React/nginx and a one-shot migration gate, with no published ports. The independent shared Caddy in `/opt/gateway` owns 80/443; see [gateway migration and rollback](docs/gateway.md). The old Cloud Compose remains for development. `APP_MODE` is canonical; `APPLICATION_MODE` remains compatible. First commissioning keeps physical writes disabled on both Cloud and Edge. No VPS deployment is performed by these repository changes.
 
 ## Phase 11.2: realtime sync without replay lag
 

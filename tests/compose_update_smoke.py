@@ -20,6 +20,7 @@ from uuid import UUID, uuid4
 
 import httpx
 from compose_auth_helpers import bootstrap_login
+from gateway_helpers import Gateway
 
 from app.core.version import APP_VERSION
 from app.release import build
@@ -49,7 +50,9 @@ def command(args: list[str], *, check: bool = True) -> str:
         timeout=900,
     )
     if check and result.returncode:
-        raise RuntimeError("Isolated Docker operation failed; subprocess output suppressed")
+        # All resources/credentials here are synthetic; still redact the test database secret.
+        details = result.stderr[-4000:].replace(os.environ.get("POSTGRES_PASSWORD", "<unset>"), "[redacted]")
+        raise RuntimeError("Isolated Docker operation failed: " + details)
     return result.stdout.strip()
 
 
@@ -72,11 +75,10 @@ async def main() -> None:
             "CLOUD_PUBLIC_URL": f"http://localhost:{http_port}",
             "AUTH_COOKIE_SECURE": "false",
             "MODBUS_WRITES_ENABLED": "false",
-            "CLOUD_BIND_ADDRESS": "127.0.0.1",
-            "CLOUD_HTTP_PORT": str(http_port),
-            "CLOUD_HTTPS_PORT": str(port()),
             "UPDATE_SHARED_DIRECTORY": shared.as_posix(),
         }
+        gateway = Gateway(ROOT, work, project, values)
+        gateway.prepare(http_port, port())
         os.environ.update(values)  # This disposable test process only; no real env file is read.
         environment.write_text(
             "\n".join(f"{key}={value}" for key, value in values.items()), encoding="utf-8"
@@ -125,9 +127,12 @@ async def main() -> None:
             assert set(rendered["services"]) == {"postgres", "migrate", "api", "frontend"}
             assert not rendered["services"]["postgres"].get("ports")
             assert not rendered["services"]["api"].get("ports")
+            assert not rendered["services"]["frontend"].get("ports")
             assert rendered["services"]["api"]["environment"]["MODBUS_WRITES_ENABLED"] == "false"
             command([*prefix, "build", "api", "frontend"])
             command([*prefix, "up", "-d", "--no-build", "--wait", "--wait-timeout", "150"])
+            gateway.compose("up", "-d", "--no-build", "--wait")
+            gateway_before = gateway.identity()
             # Create a reviewed local release fixture without touching the working checkout.
             source = work / "release-source"
             tracked = command(
@@ -142,7 +147,6 @@ async def main() -> None:
                     "--",
                     "server",
                     "frontend",
-                    "deploy/cloud/Caddyfile",
                 ]
             ).splitlines()
             for name in tracked:
@@ -222,6 +226,7 @@ async def main() -> None:
                     expected = "ROLLED_BACK" if fail_health else "SUCCESS"
                     assert result.state == expected, result.model_dump_json(exclude={"release"})
                     assert environment.read_bytes() == env_before
+                    assert gateway.identity() == gateway_before
                     assert (folder / "recovery.mmbak").read_bytes() == encrypted
                     probe = await asyncio.to_thread(deployment.probe)
                     assert probe["version"] == (APP_VERSION if fail_health else next_version)
@@ -240,6 +245,7 @@ async def main() -> None:
             )
         finally:
             command([*prefix, "down", "--remove-orphans"], check=False)
+            gateway.cleanup()
             # Never down -v. Delete only volumes positively labelled for this generated test project.
             volumes = command(
                 [

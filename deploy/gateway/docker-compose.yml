@@ -1,0 +1,43 @@
+# Copy this directory to /opt/gateway once. Application updates never deploy it.
+name: gateway
+services:
+  caddy:
+    image: shared-gateway-caddy:local
+    build: .
+    environment:
+      CLOUD_SITE: "${MODBUS_SCHEME:-https}://${MODBUS_HOST:?Preserve the existing Modbus hostname}"
+      MODBUS_API_UPSTREAM: ${MODBUS_API_UPSTREAM:-modbus-api:8000}
+      MODBUS_FRONTEND_UPSTREAM: ${MODBUS_FRONTEND_UPSTREAM:-modbus-frontend:8080}
+    ports:
+      - "${GATEWAY_BIND_ADDRESS:-0.0.0.0}:${GATEWAY_HTTP_PORT:-80}:8080"
+      - "${GATEWAY_BIND_ADDRESS:-0.0.0.0}:${GATEWAY_HTTPS_PORT:-443}:8443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      web:
+        ipv4_address: ${GATEWAY_IPV4:-172.30.50.2}
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, "http://127.0.0.1:8090/healthz"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: "3"}
+networks:
+  web:
+    external: true
+    name: ${GATEWAY_NETWORK:-web}
+volumes:
+  caddy_data:
+    external: true
+    name: ${CADDY_DATA_VOLUME:?Inspect and preserve the existing Caddy data volume}
+  caddy_config:
+    external: true
+    name: ${CADDY_CONFIG_VOLUME:?Inspect and preserve the existing Caddy config volume}

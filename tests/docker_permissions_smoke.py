@@ -6,7 +6,6 @@ Unique images/containers/network and a tmpfs database are removed on exit.
 """
 
 import io
-import json
 import subprocess
 import tarfile
 import time
@@ -31,7 +30,17 @@ def restricted_context(folder: str) -> bytes:
     """TAR modes reproduce Linux umask 077 even when this test runs on Windows."""
     tracked = (
         subprocess.check_output(
-            ["git", "-c", f"safe.directory={ROOT.as_posix()}", "ls-files", "-z"], cwd=ROOT
+            [
+                "git",
+                "-c",
+                f"safe.directory={ROOT.as_posix()}",
+                "ls-files",
+                "--cached",
+                "--others",
+                "--exclude-standard",
+                "-z",
+            ],
+            cwd=ROOT,
         )
         .decode()
         .split("\0")
@@ -43,7 +52,7 @@ def restricted_context(folder: str) -> bytes:
                 continue
             relative = name.removeprefix(folder + "/")
         else:
-            if not (name.startswith(("frontend/", "deploy/cloud/")) or name == ".dockerignore"):
+            if not (name.startswith("frontend/") or name == ".dockerignore"):
                 continue
             relative = name
         files[relative] = (ROOT / name).read_bytes()
@@ -177,14 +186,13 @@ assert(!fs.readdirSync('/app', {recursive: true}).some(n => n.split('/').at(-1).
         docker(
             "run",
             "--rm",
-            "-e",
-            "CLOUD_SITE=http://localhost",
-            web,
+            "--entrypoint",
             "sh",
+            web,
             "-ec",
-            'test "$(id -u)" != 0; test -r /etc/caddy/Caddyfile; '
-            'test -r /srv/index.html; test -z "$(find /srv -name ".env*")"; '
-            "caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile",
+            'test "$(id -u)" != 0; test -r /etc/nginx/conf.d/default.conf; '
+            "test -r /usr/share/nginx/html/index.html; "
+            'test -z "$(find /usr/share/nginx/html -name ".env*")"; nginx -t',
         )
         print(
             "PASS: non-root imports/source access; private directory unchanged; .env excluded",
@@ -243,39 +251,35 @@ assert(!fs.readdirSync('/app', {recursive: true}).some(n => n.split('/').at(-1).
             "fetch('http://localhost:5173/src/main.tsx')"
             ".then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
         )
-        caddy = start(
+        static = start(
             "web",
             web,
             "--read-only",
             "--cap-drop=ALL",
             "--security-opt=no-new-privileges:true",
-            "-e",
-            "CLOUD_SITE=http://localhost",
+            "--tmpfs",
+            "/tmp:rw,size=32m,mode=1777",
         )
-        wait_ready(caddy, "wget", "-qO-", "http://localhost:8080/")
-        html = docker("exec", caddy, "wget", "-qO-", "http://localhost:8080/")
+        wait_ready(static, "wget", "-qO-", "http://127.0.0.1:8080/")
+        html = docker("exec", static, "wget", "-qO-", "http://127.0.0.1:8080/")
         assert '<div id="root">' in html
-        assert (
-            json.loads(
-                docker("exec", caddy, "wget", "-qO-", "http://localhost:8080/api/health/db")
-            )["status"]
-            == "ok"
-        )
-        assets = docker("exec", caddy, "find", "/srv/assets", "-type", "f").splitlines()
+        assets = docker(
+            "exec", static, "find", "/usr/share/nginx/html/assets", "-type", "f"
+        ).splitlines()
         assert assets
         for asset in assets:
             docker(
                 "exec",
-                caddy,
+                static,
                 "wget",
                 "-qO",
                 "/dev/null",
-                "http://localhost:8080" + asset.removeprefix("/srv"),
+                "http://127.0.0.1:8080" + asset.removeprefix("/usr/share/nginx/html"),
             )
-        for container in (api, vite, caddy):
+        for container in (api, vite, static):
             logs = docker("logs", container)
             assert "PermissionError" not in logs and "Permission denied" not in logs
-        print("PASS: API DB health, Vite TSX serving, non-root Caddy SPA/API routing", flush=True)
+        print("PASS: API DB health, Vite TSX serving, non-root nginx static serving", flush=True)
     finally:
         for container in reversed(containers):
             docker("rm", "-f", "-v", container, check=False)

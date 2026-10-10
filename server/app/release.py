@@ -68,7 +68,7 @@ def main() -> None:
         raise SystemExit("Release creation requires a clean reviewed checkout")
     tracked = (
         subprocess.check_output(
-            ["git", "ls-files", "-z", "--", "server", "frontend", "deploy/cloud/Caddyfile"],
+            ["git", "ls-files", "-z", "--", "server", "frontend"],
             cwd=root,
         )
         .decode("utf-8")

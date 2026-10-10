@@ -253,7 +253,7 @@ Phase 11 adds standalone/edge/cloud modes, a separate Edge sync process and appl
 
 ## Production Cloud boundary (11.1)
 
-A dedicated Compose stack serves compiled React through non-root Caddy and routes same-origin API/WSS to an internal FastAPI service. Only Caddy publishes ports. PostgreSQL and backend networks are internal; a one-shot preflight/Alembic service gates API startup. No hardware worker or local Automation engine exists in this stack. Cloud and Edge both gate physical writes using their own MODBUS_WRITES_ENABLED setting. See [operations and trust boundaries](production-cloud.md).
+A dedicated application Compose stack serves compiled React through non-root nginx. An independent shared Caddy gateway routes same-origin frontend/API/WSS through the external web network and exclusively owns public ports. PostgreSQL stays on its internal database network; a one-shot preflight/Alembic service gates API startup. No hardware worker or local Automation engine exists in this stack. Cloud and Edge both gate physical writes using their own MODBUS_WRITES_ENABLED setting. See [operations and trust boundaries](production-cloud.md).
 
 ## Phase 11.2 synchronization lanes
 
@@ -275,3 +275,11 @@ The optional updater override permits outbound GitHub HTTPS without exposing ano
 Previous images and encrypted recovery material remain available. Same-schema failures can
 roll back images; migration-attempt failures require explicit offline recovery. Native Edge
 installation remains operator-managed. See [release/update/recovery operations](update.md).
+
+## Independent public gateway
+
+Production Caddy lives in `/opt/gateway`, a separate Compose project. Only it owns TCP 80/443
+and certificate state. Application API/frontend join the external `web` network with unique
+aliases; PostgreSQL stays internal. The frontend is non-root nginx serving only static SPA
+files. API trusts forwarding headers only from the gateway IP. Updater deployment and rollback
+change API/frontend only; gateway state is excluded from releases. See [gateway runbook](gateway.md).

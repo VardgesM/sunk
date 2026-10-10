@@ -13,6 +13,7 @@ from uuid import uuid4
 import httpx
 from compose_auth_helpers import bootstrap_login, ws_headers
 from compose_modbus_smoke import free_port
+from gateway_helpers import Gateway
 from playwright.async_api import async_playwright
 from websockets.asyncio.client import connect
 
@@ -27,9 +28,6 @@ async def main() -> None:
         CLOUD_SCHEME="http",
         CLOUD_PUBLIC_URL=f"http://localhost:{http_port}",
         AUTH_COOKIE_SECURE="false",
-        CLOUD_BIND_ADDRESS="127.0.0.1",
-        CLOUD_HTTP_PORT=str(http_port),
-        CLOUD_HTTPS_PORT=str(https_port),
         MODBUS_WRITES_ENABLED="false",
     )
     prefix = ["docker", "compose", "-p", project, "-f", "docker-compose.cloud.production.yml"]
@@ -44,14 +42,31 @@ async def main() -> None:
 
     with TemporaryDirectory(prefix="production-test-", dir=".local") as directory:
         temp = Path(directory).resolve()
+        gateway = Gateway(Path.cwd(), temp, project, env)
+        images = temp / "images.json"
+        images.write_text(
+            json.dumps(
+                {
+                    "services": {
+                        "api": {"image": project + ":api"},
+                        "migrate": {"image": project + ":api"},
+                        "frontend": {"image": project + ":frontend"},
+                    }
+                }
+            )
+        )
+        prefix.extend(["-f", str(images)])
         try:
+            await asyncio.to_thread(gateway.prepare, http_port, https_port)
             config = json.loads(await compose("config", "--format", "json"))
             assert set(config["services"]) == {"postgres", "api", "frontend", "migrate"}
-            for service in ("postgres", "api", "migrate"):
+            for service in ("postgres", "api", "migrate", "frontend"):
                 assert not config["services"][service].get("ports")
             assert config["networks"]["database"]["internal"]
-            assert config["networks"]["backend"]["internal"]
+            assert config["networks"]["web"]["external"]
+            assert set(config["services"]["postgres"]["networks"]) == {"database"}
             assert config["services"]["api"]["environment"]["APP_MODE"] == "cloud"
+            await compose("build", "api", "frontend")
             await compose("up", "-d", "--no-build", "--wait")
             async with httpx.AsyncClient(base_url=env["CLOUD_PUBLIC_URL"], timeout=15) as api:
                 username, password = await bootstrap_login(prefix, env, api)
@@ -83,7 +98,7 @@ async def main() -> None:
 
             # Local CA only: never request public certificates or contact a real domain in tests.
             caddy = (
-                Path("deploy/cloud/Caddyfile")
+                Path("deploy/gateway/Caddyfile")
                 .read_text()
                 .replace("admin off", "admin off\n    skip_install_trust")
             )
@@ -94,7 +109,7 @@ async def main() -> None:
                 json.dumps(
                     {
                         "services": {
-                            "frontend": {
+                            "caddy": {
                                 "volumes": [
                                     {
                                         "type": "bind",
@@ -108,15 +123,22 @@ async def main() -> None:
                     }
                 )
             )
-            prefix.extend(["-f", str(override)])
+            gateway.prefix.extend(["-f", str(override)])
             env.update(
                 CLOUD_SCHEME="https",
                 CLOUD_PUBLIC_URL=f"https://localhost:{https_port}",
                 AUTH_COOKIE_SECURE="true",
+                MODBUS_SCHEME="https",
             )
-            await compose("up", "-d", "--no-build", "--force-recreate", "--wait")
-            certificate = await compose(
-                "exec", "-T", "frontend", "cat", "/data/caddy/pki/authorities/local/root.crt"
+            await compose("up", "-d", "--no-build", "--no-deps", "--wait", "api", "frontend")
+            await asyncio.to_thread(gateway.compose, "up", "-d", "--no-build", "--wait")
+            certificate = await asyncio.to_thread(
+                gateway.compose,
+                "exec",
+                "-T",
+                "caddy",
+                "cat",
+                "/data/caddy/pki/authorities/local/root.crt",
             )
             (temp / "root.crt").write_text(certificate)
             context = ssl.create_default_context(cafile=str(temp / "root.crt"))
@@ -164,7 +186,7 @@ async def main() -> None:
                 assert (await api.post("/api/sync/v1/heartbeat", json={})).status_code == 401
                 assert (await api.get("/api/sync/status")).json()["edges"][0]["state"] == "ONLINE"
                 async with async_playwright() as pw:
-                    browser = await pw.chromium.launch(channel="msedge", headless=True)
+                    browser = await pw.chromium.launch(headless=True)
                     try:
                         page = await browser.new_page(
                             ignore_https_errors=True, viewport={"width": 390, "height": 844}
@@ -174,6 +196,10 @@ async def main() -> None:
                         await page.get_by_label("Password").fill(password)
                         await page.get_by_role("button", name="Sign in", exact=True).click()
                         await page.get_by_text("remote monitoring", exact=False).first.wait_for()
+                        for route in ("/settings", "/settings/backups", "/settings/updates"):
+                            await page.goto(env["CLOUD_PUBLIC_URL"] + route)
+                            await page.wait_for_load_state("networkidle")
+                            assert await page.locator("#root").inner_text()
                         assert await page.evaluate(
                             "document.documentElement.scrollWidth <= window.innerWidth"
                         )
@@ -185,7 +211,10 @@ async def main() -> None:
                 assert redirect.headers["location"].startswith("https://localhost/")
             await compose("exec", "-T", "api", "alembic", "check")
             assert "0014_backups" in await compose("exec", "-T", "api", "alembic", "current")
-            assert (await compose("exec", "-T", "frontend", "id", "-u")).strip() == "1000"
+            assert (await compose("exec", "-T", "frontend", "id", "-u")).strip() == "101"
+            before = await asyncio.to_thread(gateway.identity)
+            await compose("restart", "api", "frontend")
+            assert await asyncio.to_thread(gateway.identity) == before
             logs = await compose("logs", "--no-color", "api", "frontend", "migrate")
             assert env["POSTGRES_PASSWORD"] not in logs and machine_token not in logs
             assert "Traceback" not in logs
@@ -198,7 +227,23 @@ async def main() -> None:
             print(logs[-9000:].replace(env["POSTGRES_PASSWORD"], "[redacted]"), flush=True)
             raise
         finally:
-            await compose("down", "-v", "--remove-orphans")
+            await compose("down", "--remove-orphans")
+            await asyncio.to_thread(gateway.cleanup)
+            volumes = gateway.run(
+                [
+                    "docker",
+                    "volume",
+                    "ls",
+                    "-q",
+                    "--filter",
+                    f"label=com.docker.compose.project={project}",
+                ]
+            ).splitlines()
+            for volume in volumes:
+                if volume.startswith(project + "_"):
+                    gateway.run(["docker", "volume", "rm", volume])
+            for image in (project + ":api", project + ":frontend"):
+                gateway.run(["docker", "image", "rm", image], check=False)
             print("Removed isolated production test containers and volumes", flush=True)
 
 

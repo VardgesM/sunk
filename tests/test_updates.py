@@ -35,7 +35,7 @@ def release_files(tmp_path):
         "server/app/main.py": "# test payload only\n",
         "frontend/Dockerfile.production": "FROM scratch\n",
         "frontend/package-lock.json": "{}",
-        "deploy/cloud/Caddyfile": "# test\n",
+        "frontend/nginx.conf": "# test\n",
     }
     for name, value in contents.items():
         path = root / name

@@ -3,15 +3,64 @@
 import json
 import re
 import subprocess
+import time
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
+import httpx
 from pydantic import Field, model_validator
 
 from app.schemas.backup import Strict
 from app.updates.artifact import disk_space, sha256, unpack
 from app.updates.schema import UpdateStatus
 from app.updates.store import UpdateError, UpdateStore, atomic_json
+
+
+def public_health(url: str) -> None:
+    """Verify the operator-configured origin, including the independent gateway route."""
+    parsed = urlsplit(url)
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+        or parsed.path not in {"", "/"}
+    ):
+        raise UpdateError("Invalid configured public origin")
+    try:
+        with httpx.Client(base_url=url.rstrip("/"), timeout=5, follow_redirects=False) as client:
+            for path in ("/api/health", "/api/health/db"):
+                response = client.get(path)
+                if response.status_code != 200 or response.json().get("status") != "ok":
+                    raise UpdateError("Public API/database health check failed")
+            response = client.get("/dashboard")
+            if response.status_code != 200 or '<div id="root">' not in response.text:
+                raise UpdateError("Public frontend health check failed")
+    except (httpx.HTTPError, ValueError):
+        raise UpdateError("Public gateway health check failed") from None
+
+
+def validate_topology(config: dict) -> None:
+    services = config["services"]
+    if set(services) != {"api", "frontend", "postgres", "migrate"}:
+        raise UpdateError("Unsupported deployment topology; gateway must be a separate project")
+    if any(services[name].get("ports") for name in services):
+        raise UpdateError("Application services must not publish ports; migrate the gateway first")
+    if not config.get("networks", {}).get("web", {}).get("external"):
+        raise UpdateError("Cloud requires an operator-managed external gateway network")
+    if set(services["postgres"].get("networks", {})) != {"database"}:
+        raise UpdateError("PostgreSQL must remain on its private database network")
+    if not config.get("networks", {}).get("database", {}).get("internal"):
+        raise UpdateError("PostgreSQL network must be internal")
+    for service in services.values():
+        if any(
+            v.get("target") in {"/data", "/config", "/var/run/docker.sock"}
+            for v in service.get("volumes", [])
+        ):
+            raise UpdateError("Application deployment must not own gateway state or Docker socket")
 
 
 class HostConfig(Strict):
@@ -124,6 +173,7 @@ class CloudCompose:
         if sha256(self.store.job(status.job_id) / "recovery.mmbak") != status.backup_sha256:
             raise UpdateError("Pinned recovery backup integrity check failed")
         config = json.loads(self.compose(None, "config", "--format", "json", capture=True))
+        validate_topology(config)
         services = config["services"]
         if set(services) != {"api", "frontend", "postgres", "migrate"}:
             raise UpdateError(
@@ -151,6 +201,7 @@ class CloudCompose:
         if any(service not in {"api", "frontend", "postgres"} for service in running_services):
             raise UpdateError("Unexpected active services in the Cloud project")
         probe = self.probe()
+        public_health(environment["CLOUD_PUBLIC_URL"])
         if (
             probe["version"] != status.from_version
             or probe["revision"] != status.previous_revision
@@ -207,7 +258,14 @@ class CloudCompose:
             previous["services"][service] = {"image": tag}
         previous["services"]["migrate"] = {"image": prefix + ":api"}
         atomic_json(work / "previous.json", previous)
-        atomic_json(work / "deployment.json", {"fingerprint": self.fingerprint(), "probe": probe})
+        atomic_json(
+            work / "deployment.json",
+            {
+                "fingerprint": self.fingerprint(),
+                "probe": probe,
+                "public_url": environment["CLOUD_PUBLIC_URL"],
+            },
+        )
         release_root = work / "release"
         unpack(
             self.store.job(status.job_id) / "release.tar.gz",
@@ -300,6 +358,15 @@ class CloudCompose:
             )
         if self.probe() != expected:
             raise UpdateError("Version, migration, mode or write safety health check failed")
+        deadline = time.monotonic() + self.config.health_timeout_seconds
+        while True:
+            try:
+                public_health(metadata["public_url"])
+                break
+            except UpdateError:
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(1)
         atomic_json(
             self.config.private_directory / "active.json",
             {

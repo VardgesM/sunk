@@ -3,7 +3,8 @@
 services:
   api:
     # Outbound HTTPS for GitHub. No API host port is published.
-    networks: [database, backend, update_downloads]
+    networks:
+      update_downloads: {}
     environment:
       UPDATE_ENABLED: "true"
       UPDATE_DIRECTORY: /var/lib/modbus-monitor/updates

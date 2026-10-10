@@ -71,7 +71,9 @@
 - Synchronization must exclude users, password hashes, sessions and notification secrets.
 
 - Production secrets and database/certificate backups must never be committed.
-- Production Cloud exposes only its reverse proxy; PostgreSQL and FastAPI remain on private Docker networks.
+- The independent shared gateway owns public 80/443 and certificates; application services publish no ports.
+- PostgreSQL stays on its internal network. API/frontend join the external web network; trust proxy headers only from the gateway.
+- Application deployment/update/rollback must never restart, recreate or overwrite the shared gateway or its certificate volumes.
 - Production Cloud must not include a hardware/Automation worker service, even behind an optional profile.
 - First production commissioning is read-only: physical writes are disabled on both Edge and Cloud.
 

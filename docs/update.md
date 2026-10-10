@@ -49,7 +49,7 @@ Two assets are attached to a published GitHub Release `vX.Y.Z` (or `X.Y.Z`):
 
 This is an illustrative schema, not a deployable artifact. The manifest is **detached** to
 avoid a self-referential archive checksum. Every archive member is listed with size/hash.
-Allowed roots are `server/`, `frontend/`, and `deploy/cloud/Caddyfile`; local env files,
+Allowed roots are `server/` and `frontend/` (including `frontend/nginx.conf`); local env files,
 hidden directories, caches, databases, backups, keys, symlinks, hardlinks and traversal
 paths are rejected. Expanded/compressed sizes and member counts are bounded. Python is
 parsed as data for the migration chain, never imported during artifact validation.
@@ -162,8 +162,9 @@ preparation and installation. Only one active job is accepted.
 Default Compose supplies a non-root writable named `updates`/`cloud_updates` volume for
 release-check state. The opt-in Cloud host bridge replaces the API's updater mount with the
 dedicated shared host directory. Existing database/backup volumes are unchanged. Default
-Cloud keeps its internal-only API networking; release checks need the opt-in outbound bridge
-or an explicitly reviewed equivalent outbound HTTPS route.
+Cloud API now joins the external web network for the independent gateway. That network also
+provides outbound access; the optional updater bridge is retained for existing host setups.
+Neither path publishes an API port, and PostgreSQL remains on its internal network only.
 
 The API reuses Phase 12 pg_dump snapshot/encryption/retention. An additional encrypted
 `recovery.mmbak` is pinned in the update job directory, so deleting/retaining normal backups
@@ -327,3 +328,17 @@ Remaining v1 limits: only production Cloud Compose has an installation handler; 
 installation stays manual. Database restore after any attempted new migration is explicitly
 operator-controlled. Public GitHub Releases only; SHA-256 integrity is implemented, publisher
 signing is not. Real production installation and a real published release have not been exercised.
+
+## Shared gateway topology
+
+See [gateway migration](gateway.md). New production frontend images contain nginx only.
+The independent `/opt/gateway` project is never passed to the host updater. It owns external
+certificate volumes and the external web network; releases cannot carry gateway files.
+Complete the one-time operator migration before enabling this handler and update its host
+checkout. Old Caddy-era frontend artifacts are not compatible with the new application topology.
+
+The handler rejects application-published ports, a Caddy service, gateway state mounts, or
+PostgreSQL on the shared network. It checks public health/SPA routing through the configured
+`CLOUD_PUBLIC_URL` as well as internal version/revision/write safety. External TLS certificates
+must validate. A gateway outage can therefore fail verification, but rollback never restarts
+or replaces gateway. The independent gateway must be repaired by its operator.
