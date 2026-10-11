@@ -42,10 +42,10 @@ export default function WidgetEditor({ initial, tags, nextY, onSave, onClose }: 
         {Object.entries(labels).map(([key,label]) => <MenuItem key={key} value={key}>{label}</MenuItem>)}
       </TextField>
       <TextField label="Widget title" value={title} onChange={e => setTitle(e.target.value)} required />
-      {!['text','alarms'].includes(type) && <TextField select label={type === 'chart' ? 'Tags' : 'Tag'} value={type === 'chart' ? ids : ids[0] ?? ''}
+      {!['text','alarms'].includes(type) && <TextField select label={type === 'chart' ? 'Tags' : 'Tag'} value={type === 'chart' ? ids : ids[0] ?? ''} sx={{ minWidth: 0, '& .MuiSelect-select': { whiteSpace: 'normal', overflowWrap: 'anywhere' } }}
         slotProps={{ select: { multiple: type === 'chart' } }} onChange={e => { const value = e.target.value as unknown as number | number[]; setIds(Array.isArray(value) ? value.map(Number) : [Number(value)]); }}
         helperText={type === 'chart' ? 'Up to 8 numeric Tags with the same unit.' : 'Only compatible Tags are listed; the server validates configuration again.'}>
-        {candidates.map(tag => <MenuItem key={tag.id} value={tag.id}>{tag.name} ({tag.key}) {tag.unit}</MenuItem>)}
+        {candidates.map(tag => <MenuItem key={tag.id} value={tag.id} sx={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}>{tag.name} ({tag.key}) {tag.unit}</MenuItem>)}
       </TextField>}
       {type === 'value' && <>{number('decimals','Decimals',2)}{toggle('show_unit','Show unit')}{toggle('show_quality','Show quality')}{toggle('show_last_update','Show last update')}</>}
       {type === 'gauge' && <>{number('min','Gauge minimum',0)}{number('max','Gauge maximum',100)}{number('decimals','Decimals',2)}
@@ -57,8 +57,9 @@ export default function WidgetEditor({ initial, tags, nextY, onSave, onClose }: 
       {type === 'alarms' && <>{toggle('active_only','Active alarms only')}{number('maximum_rows','Maximum rows',10)}<TextField select label="Severities" value={config.severities ?? ['INFO','WARNING','CRITICAL']} slotProps={{ select: { multiple: true } }} onChange={e => setConfig({ ...config, severities: e.target.value as unknown as WidgetConfig['severities'] })}>{['INFO','WARNING','CRITICAL'].map(s => <MenuItem key={s} value={s}>{s}</MenuItem>)}</TextField></>}
       {type === 'text' && <TextField label="Text" multiline minRows={3} value={config.text ?? ''} onChange={e => setConfig({ ...config, text: e.target.value })} helperText="Plain text only. HTML and scripts are not executed." />}
       <Typography variant="subtitle2">Layout (also adjustable by dragging and resizing)</Typography>
+      <Typography variant="caption" color="text.secondary">Phone viewing uses full-width cards that fit their content, with alarm lists first. Saved phone positions still control the order of other widgets. Editing preserves all three saved layouts.</Typography>
       {layouts.map((layout, index) => <Stack key={layout.breakpoint} spacing={1}><Typography>{layout.breakpoint === 'lg' ? 'Desktop' : layout.breakpoint === 'md' ? 'Tablet' : 'Phone'}</Typography>
-        <Stack direction="row" spacing={1}>{(['x','y','w','h'] as const).map(key => <TextField key={key} label={`${layout.breakpoint} ${key}`} type="number" size="small" value={layout[key]} disabled={layout.breakpoint === 'sm' && ['x','w'].includes(key)} onChange={e => setLayouts(rows => rows.map((l,i) => i === index ? { ...l, [key]: Number(e.target.value) } : l))} />)}</Stack>
+        <Stack direction="row" spacing={1}>{(['x','y','w','h'] as const).map(key => <TextField key={key} label={`${layout.breakpoint} ${key}`} type="number" size="small" sx={{ minWidth: 0, '& input': { px: 1 } }} value={layout[key]} disabled={layout.breakpoint === 'sm' && ['x','w'].includes(key)} onChange={e => setLayouts(rows => rows.map((l,i) => i === index ? { ...l, [key]: Number(e.target.value) } : l))} />)}</Stack>
       </Stack>)}
     </Stack></DialogContent>
     <DialogActions><Button disabled={busy} onClick={onClose}>Cancel</Button><Button disabled={busy || !title.trim()} onClick={() => void save()} variant="contained">Save widget</Button></DialogActions>

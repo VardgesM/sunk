@@ -1,4 +1,5 @@
 import Can from '../auth/Can';
+import { usePermission } from '../auth/context';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, Checkbox, MenuItem, Paper, Snackbar, Stack, TextField, Typography } from '@mui/material';
 import { Responsive, useContainerWidth, type ResponsiveLayouts } from 'react-grid-layout';
@@ -10,7 +11,11 @@ import type { Tag } from '../types/configuration';
 import type { Breakpoint, Dashboard, DashboardDetail, DashboardInput, Widget } from '../types/dashboards';
 import { LiveConnectionStatus } from '../components/LiveValues';
 import WidgetEditor from '../components/WidgetEditor';
-import DashboardWidget from '../widgets/DashboardWidget';
+import WidgetFrame from '../widgets/WidgetFrame';
+import { dashboardBreakpoints, mobileWidgetOrder } from '../widgets/layout';
+import DashboardConnectivity from '../widgets/DashboardConnectivity';
+import AlarmIndicator from '../components/AlarmIndicator';
+import { shellLayout } from '../layout/tokens';
 
 function DashboardForm({ initial, onSave, onClose }: { initial?: Dashboard; onSave: (value: DashboardInput) => Promise<void>; onClose: () => void }) {
   const [form, setForm] = useState<DashboardInput>(initial ?? { name: '', slug: '', description: null, is_default: false });
@@ -35,6 +40,9 @@ function Canvas({ dashboard, tags, reload, report }: { dashboard: DashboardDetai
   const [editor, setEditor] = useState<Widget | 'new'>(), [remove, setRemove] = useState<Widget>();
   const [error, setError] = useState('');
   const { width, containerRef, mounted } = useContainerWidth();
+  const canConfigure = usePermission('configure');
+  const flowing = width < dashboardBreakpoints.md && !editing;
+  const mobileWidgets = useMemo(() => mobileWidgetOrder(dashboard.widgets), [dashboard.widgets]);
   const layouts = useMemo<ResponsiveLayouts<Breakpoint>>(() => Object.fromEntries(['lg','md','sm'].map(b => [b, dashboard.widgets.map(w => ({ ...w.layouts.find(l => l.breakpoint === b)!, i: String(w.id), minH: 2, maxH: 40 }))])), [dashboard]);
   const pending = useRef(layouts);
   const tagMap = useMemo(() => new Map(tags.map(t => [t.id,t])), [tags]);
@@ -54,17 +62,22 @@ function Canvas({ dashboard, tags, reload, report }: { dashboard: DashboardDetai
     {editing && <Alert severity="info">Drag the widget title to move; use its bottom-right handle to resize. Each screen width has its own layout. Save layout before editing widget settings. Settings and widget removal are saved immediately.</Alert>}
     {dirty && <Typography role="status">Unsaved layout changes</Typography>}
     {error && <Alert severity="error">{error}</Alert>}
-    {!dashboard.widgets.length && <Alert severity="info">No widgets yet. Enter edit mode and add a widget.</Alert>}
+    {!dashboard.widgets.length && <Paper variant="outlined" sx={{ p: 3, textAlign: 'center' }}>
+      <Typography variant="h6">No widgets configured</Typography>
+      <Typography color="text.secondary" sx={{ mt: 1 }}>{canConfigure ? 'Add live values, equipment states, alarms or charts to this dashboard.' : 'An administrator can add widgets to this dashboard.'}</Typography>
+      {canConfigure && <Button variant="contained" sx={{ mt: 2 }} onClick={() => { setEditing(true); setEditor('new'); }}>Add first widget</Button>}
+    </Paper>}
     <Box ref={containerRef} sx={{ width: '100%', minWidth: 0 }}>
-      {mounted && <Responsive<Breakpoint> width={width} breakpoints={{ lg: 1000, md: 600, sm: 0 }} cols={{ lg: 12, md: 6, sm: 1 }} layouts={layouts} rowHeight={40} margin={[12,12]} containerPadding={[0,0]}
+      {mounted && flowing && <Stack spacing={2} aria-label="Dashboard widgets, mobile view">
+        {mobileWidgets.map(widget => <Paper key={widget.id} component="article" aria-label={widget.title} variant="outlined" sx={{ minWidth: 0 }}>
+          <WidgetFrame widget={widget} tags={tagMap} editing={false} locked={false} flowing onEdit={() => {}} onRemove={() => {}} />
+        </Paper>)}
+      </Stack>}
+      {mounted && !flowing && <Responsive<Breakpoint> width={width} breakpoints={dashboardBreakpoints} cols={{ lg: 12, md: 6, sm: 1 }} layouts={layouts} rowHeight={40} margin={[12,12]} containerPadding={[0,0]}
         dragConfig={{ enabled: editing && !busy, handle: '.widget-handle', cancel: 'button' }} resizeConfig={{ enabled: editing && !busy }}
         onLayoutChange={(_layout, all) => { pending.current = all; }} onDragStop={() => setDirty(true)} onResizeStop={() => setDirty(true)}>
-        {dashboard.widgets.map(widget => <Paper key={String(widget.id)} variant="outlined" sx={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
-          <Stack className="widget-handle" direction="row" alignItems="center" sx={{ p: 1, bgcolor: 'action.hover', cursor: editing ? 'move' : 'default', touchAction: editing ? 'none' : 'auto' }}>
-            <Typography component="h2" fontWeight={700} sx={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>{widget.title}</Typography>
-            {editing && <><Can permission="configure"><Button size="small" disabled={dirty || busy} onClick={() => setEditor(widget)} aria-label={`Edit ${widget.title}`}>Edit</Button></Can><Can permission="configure"><Button size="small" disabled={dirty || busy} onClick={() => setRemove(widget)} aria-label={`Remove ${widget.title}`}>Remove</Button></Can></>}
-          </Stack>
-          <Box sx={{ p: 2, minHeight: 0, overflow: 'auto', flex: 1 }}><DashboardWidget widget={widget} tags={tagMap} editing={editing} /></Box>
+        {dashboard.widgets.map(widget => <Paper key={String(widget.id)} component="article" aria-label={widget.title} variant="outlined" sx={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
+          <WidgetFrame widget={widget} tags={tagMap} editing={editing && canConfigure} locked={dirty || busy} flowing={false} onEdit={() => setEditor(widget)} onRemove={() => setRemove(widget)} />
         </Paper>)}
       </Responsive>}
     </Box>
@@ -99,18 +112,24 @@ export default function DashboardsPage() {
     if (selected !== undefined) { const row = await dashboardsApi.get(selected); setDashboard(row); }
     setRows(await dashboardsApi.all()); setTags(await tagsApi.all());
   }
-  return <Stack spacing={2}>
-    <Stack direction="row" alignItems="center" flexWrap="wrap" gap={2}><Typography variant="h4" component="h1">Dashboards</Typography><LiveConnectionStatus /><Can permission="configure"><Button onClick={() => setForm('new')}>Create dashboard</Button></Can></Stack>
+  return <Stack spacing={2} sx={{ minWidth: 0, '& .MuiButton-root': { minHeight: shellLayout.touchTarget } }}>
+    <Stack direction="row" alignItems="center" flexWrap="wrap" gap={1}><Typography variant="h4" component="h1" sx={{ flex: 1 }}>Dashboards</Typography><Can permission="configure"><Button onClick={() => setForm('new')}>Create dashboard</Button></Can></Stack>
+    <Stack component="section" aria-label="Dashboard status" direction={{ xs: 'column', sm: 'row' }} flexWrap="wrap" gap={1.5} sx={{ alignItems: { xs: 'stretch', sm: 'center' }, '& .MuiChip-root': { maxWidth: '100%' }, '& .MuiChip-label': { whiteSpace: 'normal' } }}>
+      <Box sx={{ '& .MuiChip-root': { minHeight: shellLayout.touchTarget } }}><AlarmIndicator /></Box>
+      <Box sx={{ '& > .MuiStack-root': { mb: 0 } }}><LiveConnectionStatus /></Box>
+      <DashboardConnectivity />
+    </Stack>
     {error && <Alert severity="error" action={<Button onClick={() => setGeneration(v => v + 1)}>Retry</Button>}>{error}</Alert>}
     {!rows && !error && <Typography role="status">Loading dashboards...</Typography>}
-    {rows?.length === 0 && <Alert severity="info">No dashboards yet. Create your first dashboard.</Alert>}
+    {rows?.length === 0 && <Paper variant="outlined" sx={{ p: 3 }}><Typography variant="h6">No dashboards yet</Typography><Typography color="text.secondary">Dashboards bring live readings, equipment states and alarms together.</Typography><Can permission="configure"><Typography sx={{ mt: 1 }}>Use Create dashboard to build your first overview.</Typography></Can></Paper>}
     {!!rows?.length && <Stack direction="row" flexWrap="wrap" gap={1}>
-      <TextField select label="Dashboard" value={selected ?? ''} onChange={e => { setDashboard(undefined); setSelected(Number(e.target.value)); }} sx={{ minWidth: 180 }}>
-        {rows.map(row => <MenuItem key={row.id} value={row.id}>{row.name}{row.is_default ? ' (default)' : ''}</MenuItem>)}
+      <TextField select label="Dashboard" value={selected ?? ''} onChange={e => { setDashboard(undefined); setSelected(Number(e.target.value)); }} sx={{ width: { xs: '100%', sm: 320 }, minWidth: 0, '& .MuiSelect-select': { whiteSpace: 'normal', overflowWrap: 'anywhere' } }}>
+        {rows.map(row => <MenuItem key={row.id} value={row.id} sx={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}>{row.name}{row.is_default ? ' (default)' : ''}</MenuItem>)}
       </TextField>
       {dashboard?.id === selected && <><Can permission="configure"><Button onClick={() => setForm(dashboard)}>Rename / settings</Button></Can><Can permission="configure"><Button color="error" onClick={() => setDeleting(true)}>Delete dashboard</Button></Can><Button onClick={() => void reload().catch(e => setError(String(e)))}>Reload dashboard</Button></>}
     </Stack>}
-    {dashboard && dashboard.id === selected && tags && <><Typography>{dashboard.description}</Typography><Canvas key={`${dashboard.id}:${generation}`} dashboard={dashboard} tags={tags} reload={reload} report={setMessage} /></>}
+    {selected !== undefined && dashboard?.id !== selected && !error && <Typography role="status">Loading widgets...</Typography>}
+    {dashboard && dashboard.id === selected && tags && <>{dashboard.description && <Typography color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>{dashboard.description}</Typography>}<Canvas key={`${dashboard.id}:${generation}`} dashboard={dashboard} tags={tags} reload={reload} report={setMessage} /></>}
     {form && <DashboardForm initial={form === 'new' ? undefined : form} onClose={() => setForm(undefined)} onSave={async value => {
       const result = form === 'new' ? await dashboardsApi.create(value) : await dashboardsApi.edit(form.id,value);
       setForm(undefined); setSelected(result.id); setDashboard(result); setGeneration(v => v + 1); setMessage('Dashboard saved');

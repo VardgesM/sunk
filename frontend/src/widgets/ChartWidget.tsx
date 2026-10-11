@@ -14,18 +14,27 @@ function Plot({ data, legend }: { data: HistoryResponse[]; legend: boolean }) {
   useEffect(() => {
     if (!container.current) return;
     const chart = init(container.current, undefined, { renderer: 'svg' });
-    chart.setOption({ animation: false, aria: { enabled: true, label: { description: 'Historical line chart' } },
-      legend: { show: legend, type: 'scroll' }, grid: { left: 60, right: 15, top: 45, bottom: 65 },
-      tooltip: { trigger: 'axis', renderMode: 'richText' }, xAxis: { type: 'time', axisLabel: { hideOverlap: true } },
+    const compactOptions = () => {
+      const narrow = (container.current?.clientWidth ?? 0) < 480;
+      return {
+        legend: { show: legend, type: 'scroll', left: 0, right: 0, top: 0,
+          textStyle: { width: narrow ? 120 : 200, overflow: 'truncate' } },
+        grid: { left: 8, right: 12, top: legend ? 65 : 30, bottom: 65, containLabel: true },
+        tooltip: { trigger: 'axis', renderMode: 'richText', confine: true,
+          textStyle: { width: narrow ? 180 : 300, overflow: 'break' } },
+        xAxis: { type: 'time', splitNumber: narrow ? 3 : 6, axisLabel: { hideOverlap: true, fontSize: 11 } },
+      };
+    };
+    chart.setOption({ animation: false, aria: { enabled: true, label: { description: 'Historical line chart' } }, ...compactOptions(),
       yAxis: { type: 'value', scale: true, name: data[0]?.tag.unit ?? '' },
       dataZoom: [{ type: 'inside' }, { type: 'slider', bottom: 5 }],
       series: data.map(history => ({ name: history.tag.name, type: 'line', connectNulls: false, showSymbol: false,
         data: history.points.map(p => [p.recorded_at, p.has_invalid || p.quality !== 'GOOD' ? null : p.value_numeric]) })),
     });
-    const observer = new ResizeObserver(() => chart.resize()); observer.observe(container.current);
+    const observer = new ResizeObserver(() => { chart.resize(); chart.setOption(compactOptions()); }); observer.observe(container.current);
     return () => { observer.disconnect(); chart.dispose(); };
   }, [data, legend]);
-  return <Box ref={container} role="img" aria-label="Historical line chart" sx={{ width: '100%', minWidth: 0, height: 300 }} />;
+  return <Box ref={container} role="img" aria-label="Historical line chart" sx={{ width: '100%', maxWidth: '100%', minWidth: 0, height: 300 }} />;
 }
 
 export default function ChartWidget({ widget }: { widget: Widget }) {
@@ -57,9 +66,9 @@ export default function ChartWidget({ widget }: { widget: Widget }) {
     setRangeError(''); setLoading(true); setQuery({ from: from.toISOString(), to: to.toISOString() });
   }
   const ranges = [...new Set([1, 6, 24, 168, widget.configuration.range_hours ?? 1])];
-  return <Stack spacing={1}>
+  return <Stack spacing={1.5} sx={{ minWidth: 0, '& input': { minWidth: 0 }, '& .MuiButton-root': { minHeight: 44 } }}>
     <Stack direction="row" flexWrap="wrap" gap={1}>
-      <TextField size="small" select label="Chart range" value={range} onChange={e => { setRange(e.target.value); if (e.target.value !== 'custom') refresh(e.target.value); }} sx={{ minWidth: 140 }}>
+      <TextField size="small" select label="Chart range" value={range} onChange={e => { setRange(e.target.value); if (e.target.value !== 'custom') refresh(e.target.value); }} sx={{ minWidth: 140, flex: 1, '& .MuiInputBase-root': { minHeight: 44 } }}>
         {ranges.map(h => <MenuItem key={h} value={String(h)}>{h === 168 ? '7 days' : `${h} hours`}</MenuItem>)}<MenuItem value="custom">Custom</MenuItem>
       </TextField><Button onClick={() => refresh()}>Refresh history</Button>
     </Stack>
@@ -67,6 +76,6 @@ export default function ChartWidget({ widget }: { widget: Widget }) {
     {(error || rangeError) && <Alert severity="error">{error || rangeError}</Alert>}
     {loading && <Typography role="status">Loading history...</Typography>}
     {data && !error && (data.every(h => !h.count) ? <Typography>No history in this range</Typography> : <Plot data={data} legend={widget.configuration.legend !== false} />)}
-    <Typography variant="caption">Local timestamps; quality gaps preserved. Downsampled points show bucket averages. History refresh is separate from live values.</Typography>
+    <Typography variant="caption" color="text.secondary">Local time · gaps mark invalid readings. Bucket averages may be shown. History refresh is separate from live values.</Typography>
   </Stack>;
 }
