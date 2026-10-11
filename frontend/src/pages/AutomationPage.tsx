@@ -38,7 +38,7 @@ export default function AutomationPage() {
     {loading ? <Typography role="status">Loading rules...</Typography> : !rows.length && <Typography>No automation rules configured.</Typography>}
     {rows.map(rule => <Stack key={rule.id} spacing={1} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 2 }}>
       <Typography variant="h6">{rule.name}</Typography><Typography>{rule.enabled ? 'Enabled' : 'Disabled'} ? Priority {rule.priority} ? {rule.condition_mode}</Typography>
-      <Stack direction="row" spacing={1}><Chip label={rule.runtime?.state || 'IDLE'} /><Chip label={rule.runtime?.last_result || 'No executions'} /></Stack>
+      <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap"><Chip label={rule.runtime?.state || 'IDLE'} /><Chip label={rule.runtime?.last_result || 'No executions'} /></Stack>
       <Typography>Last triggered: {rule.runtime?.last_triggered_at ? new Date(rule.runtime.last_triggered_at).toLocaleString() : 'Never'}</Typography>
       {rule.runtime?.error && <Alert severity="warning">{rule.runtime.error}</Alert>}
       <Stack direction="row" flexWrap="wrap"><Can permission="configure"><Button disabled={busy} onClick={() => { void toggle(rule); }}>{rule.enabled ? 'Disable' : 'Enable'}</Button></Can><Can permission="configure"><Button onClick={() => setEditor(rule)}>Edit</Button></Can><Button onClick={() => setHistory(rule)}>Executions</Button><Can permission="configure"><Button color="error" onClick={() => setDeleting(rule)}>Delete</Button></Can></Stack>

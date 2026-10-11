@@ -2,6 +2,8 @@ import Can from '../auth/Can';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Chip, Stack, Typography } from '@mui/material';
 import { useRuntime } from '../hooks/useRuntime';
+import StatusBadge from './data/StatusBadge';
+import { DataDetails } from './data/MobileDataCard';
 import { redetectConnection, getTest, testConnection, type DeviceStatus, type SystemRuntime, type TestResult, type TransportStatus } from '../api/runtime';
 
 export function SourceMode() {
@@ -13,27 +15,35 @@ export function SourceMode() {
   return <Chip label={data.writes_enabled ? 'Modbus — physical writes enabled' : 'Modbus — read only (writes disabled)'} size="small" sx={{ mb: 2 }} />;
 }
 
-export function ConnectionState({ id, auto = false }: { id: number; auto?: boolean }) {
+export function ConnectionState({ id, auto = false, compact = false }: { id: number; auto?: boolean; compact?: boolean }) {
   const [detectionMessage, setDetectionMessage] = useState('');
   const [detecting, setDetecting] = useState(false);
   const { data, error } = useRuntime<TransportStatus>(`/connections/${id}/status`);
-  return <Stack spacing={.5}><Chip size="small" label={data?.state ?? 'UNKNOWN'} />
-    {auto && <>
-      <Typography variant="caption">Detected port: {data?.detected_port || 'unavailable'}</Typography>
+  const detection = <Stack spacing={.5}>
       <Typography variant="caption">Detection: {data?.detection_status?.replaceAll('_', ' ') || 'PENDING'}</Typography>
       {data?.detected_at && <Typography variant="caption">Last detection: {new Date(data.detected_at).toLocaleString()}</Typography>}
       {data?.detection_error && <Typography variant="caption" color="error">{data.detection_error}</Typography>}
       <Can permission="configure"><Button disabled={detecting || data?.redetect_pending} onClick={() => { setDetecting(true); void redetectConnection(id).then(() => setDetectionMessage('Re-detect requested')).catch(e => setDetectionMessage(String(e))).finally(() => setDetecting(false)); }}>Re-detect</Button></Can>
       {detectionMessage && <Typography variant="caption">{detectionMessage}</Typography>}
+    </Stack>;
+  return <Stack spacing={.5} sx={{ minWidth: 0, overflowWrap: 'anywhere' }}><StatusBadge label={data?.state ?? 'UNKNOWN'} />
+    {auto && <>
+      <Typography variant="caption">Detected port: {data?.detected_port || 'unavailable'}</Typography>
+      {compact ? <DataDetails label="Detection details">{detection}</DataDetails> : detection}
     </>}
     <Typography variant="caption">Last communication: {data?.last_success ? new Date(data.last_success).toLocaleString() : 'not yet verified'}</Typography>
     {(error || data?.last_error) && <Typography variant="caption" color="error">{error || data?.last_error}</Typography>}
   </Stack>;
 }
 
-export function DeviceState({ id }: { id: number }) {
+export function DeviceState({ id, details = false }: { id: number; details?: boolean }) {
   const { data, error } = useRuntime<DeviceStatus>(`/devices/${id}/status`);
-  return <Chip size="small" label={error ? 'UNKNOWN' : data?.state ?? 'UNKNOWN'} title={error ?? (data?.last_success ? new Date(data.last_success).toLocaleString() : 'No successful read')} />;
+  const lastSuccess = data?.last_success ? new Date(data.last_success).toLocaleString() : 'No successful read';
+  return <Stack spacing={.5} sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>
+    <StatusBadge label={error ? 'UNKNOWN' : data?.state ?? 'UNKNOWN'} title={error ?? lastSuccess} />
+    {details && <Typography variant="caption">Last successful read: {lastSuccess}</Typography>}
+    {details && error && <Typography variant="caption" color="error">{error}</Typography>}
+  </Stack>;
 }
 
 export function TestConnection({ id, name }: { id: number; name: string }) {

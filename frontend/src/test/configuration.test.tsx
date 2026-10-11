@@ -35,7 +35,7 @@ describe('configuration management', () => {
     vi.spyOn(connectionsApi, 'list').mockResolvedValue([]);
     const create = vi.spyOn(connectionsApi, 'create').mockResolvedValue(connection);
     const user = userEvent.setup(); render(<ConnectionsPage />);
-    await screen.findByText('No matching connections.');
+    await screen.findByText('No connections configured.');
     await user.click(screen.getByRole('button', { name: 'Create' }));
     await user.type(screen.getByLabelText(/^Name/), 'Serial test');
     expect(screen.getByLabelText(/^Host/)).toBeInTheDocument();
@@ -96,7 +96,7 @@ describe('configuration management', () => {
     vi.spyOn(devicesApi, 'all').mockResolvedValue([device]);
     const list = vi.spyOn(tagsApi, 'list').mockResolvedValue([]);
     const user = userEvent.setup(); render(<TagsPage />);
-    await screen.findByText('No matching tags.');
+    await screen.findByText('No tags configured.');
     await user.type(screen.getByLabelText('Search name or key'), 'pressure');
     await choose(user, 'Device filter', 'Test device');
     await choose(user, 'Register filter', 'holding_register');
@@ -123,7 +123,7 @@ describe('configuration management', () => {
     const user = userEvent.setup(); render(<ConnectionsPage />);
     expect(await screen.findByText('Network unavailable')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Retry' }));
-    expect(await screen.findByText('No matching connections.')).toBeInTheDocument();
+    expect(await screen.findByText('No connections configured.')).toBeInTheDocument();
     expect(list).toHaveBeenCalledTimes(2);
   });
 });

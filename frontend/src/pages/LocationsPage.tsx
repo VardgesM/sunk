@@ -3,6 +3,7 @@ import { Alert, MenuItem } from '@mui/material';
 import { editable, locationsApi } from '../api/configuration';
 import EntityEditor from '../components/EntityEditor';
 import ManagementPage from '../components/ManagementPage';
+import MobileDataCard, { DetailFields } from '../components/data/MobileDataCard';
 import { NumberInput, SelectInput, TextInput } from '../components/ConfigurationFields';
 import { useOptions } from '../hooks/useOptions';
 import type { Location, LocationInput } from '../types/configuration';
@@ -23,6 +24,16 @@ export default function LocationsPage() {
   const [revision, setRevision] = useState(0);
   const locations = useOptions(locationsApi, revision);
   return <ManagementPage title="Locations" api={locationsApi} onChanged={() => setRevision((value) => value + 1)}
+    mobile={(row, actions) => <MobileDataCard name={row.name} actions={actions}
+      details={<DetailFields fields={[
+        ['Hierarchy', locationPath(row, locations.rows)], ['Sort order', row.sort_order],
+        ['Created', new Date(row.created_at).toLocaleString()],
+      ]} />}>
+      <DetailFields fields={[
+        ['Parent', row.parent_id === null ? 'Root location' : locations.rows.find(item => item.id === row.parent_id)?.name ?? `#${row.parent_id}`],
+        ['Description', row.description || 'Not provided'],
+      ]} />
+    </MobileDataCard>}
     filters={locations.error && <Alert severity="error" sx={{ mb: 2 }}>Location parent options could not be loaded: {locations.error}</Alert>}
     columns={[
       { label: 'Location', render: (row) => locationPath(row, locations.rows) },

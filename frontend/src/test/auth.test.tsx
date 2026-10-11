@@ -36,7 +36,8 @@ describe('authentication UI',()=>{
     const user=userEvent.setup();await user.type(screen.getByLabelText(/Username/),'reader');await user.type(screen.getByLabelText(/Password/),'test-secret-password');await user.click(screen.getByRole('button',{name:'Sign in'}));
     expect(await screen.findByText('Protected content')).toBeInTheDocument();
     expect(request).toHaveBeenCalledWith('/auth/login',expect.objectContaining({method:'POST',body:JSON.stringify({username:'reader',password:'test-secret-password'})}));
-    await user.click(screen.getByRole('button',{name:'Logout'}));expect(await screen.findByRole('heading',{name:'Sign in'})).toBeInTheDocument();
+    await user.click(screen.getByRole('button',{name:/Account:/}));
+    await user.click(screen.getByRole('menuitem',{name:'Logout'}));expect(await screen.findByRole('heading',{name:'Sign in'})).toBeInTheDocument();
     expect(localStorage.length).toBe(0);
   });
   it('removes protected UI on session expiry',async()=>{
@@ -54,6 +55,7 @@ describe('authentication UI',()=>{
   it.each(['VIEWER','OPERATOR','ADMIN'] as const)('restricts %s navigation',async role=>{
     const permissions=role==='ADMIN'?['read','configure','users','audit']:['read'];
     render(<MemoryRouter initialEntries={['/settings']}><AuthContext.Provider value={{...state,user:{...viewer,role,permissions}}}><App/></AuthContext.Provider></MemoryRouter>);
+    await userEvent.click(screen.getByRole('button',{name:'Open navigation'}));
     expect(screen.queryByRole('link',{name:'Users'})!==null).toBe(role==='ADMIN');
     expect(screen.queryByRole('link',{name:'Audit'})!==null).toBe(role==='ADMIN');
   });

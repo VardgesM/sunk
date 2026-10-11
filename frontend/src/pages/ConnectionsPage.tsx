@@ -5,6 +5,8 @@ import AutoAdapter from '../components/AutoAdapter';
 import { MenuItem, Typography } from '@mui/material';
 import SerialDiscovery from '../components/SerialDiscovery';
 import ManagementPage from '../components/ManagementPage';
+import MobileDataCard, { DetailFields } from '../components/data/MobileDataCard';
+import StatusBadge from '../components/data/StatusBadge';
 import { NumberInput, SelectInput, TextInput, Toggle } from '../components/ConfigurationFields';
 import { choices } from '../components/choices';
 import type { ConnectionInput, Protocol } from '../types/configuration';
@@ -17,6 +19,22 @@ const initial: ConnectionInput = {
 
 export default function ConnectionsPage() {
   return <ManagementPage title="Connections" api={connectionsApi}
+    mobile={(row, actions) => <MobileDataCard name={row.name} status={<StatusBadge label={row.enabled ? 'Enabled' : 'Disabled'} />} actions={actions}
+      details={<>
+        <DetailFields fields={row.protocol === 'modbus_tcp' ? [['Timeout', `${row.timeout_ms} ms`]] : [
+          ['Serial mode', row.serial_port_mode === 'auto' ? 'Auto detect' : 'Manual'],
+          ['Serial settings', `${row.baud_rate} baud / ${row.parity} parity / ${row.data_bits} data bits / ${row.stop_bits} stop bits`],
+          ['Timeout', `${row.timeout_ms} ms`],
+          ...(row.serial_port_mode === 'auto' ? [['USB serial number', row.usb_serial_number || 'Not provided'], ['Adapter', row.usb_product || 'USB serial adapter']] as [string, string][] : []),
+        ]} />
+        <TestConnection id={row.id} name={row.name} />
+      </>}>
+      <DetailFields fields={[
+        ['Protocol', row.protocol === 'modbus_tcp' ? 'Modbus TCP' : 'Modbus RTU'],
+        ['Endpoint', row.protocol === 'modbus_tcp' ? `${row.host}:${row.port}` : row.serial_port_mode === 'auto' ? `Auto detect: ${row.usb_product || 'USB serial adapter'}` : row.serial_port || 'Not configured'],
+      ]} />
+      <ConnectionState id={row.id} auto={row.serial_port_mode === 'auto'} compact />
+    </MobileDataCard>}
     columns={[
       { label: 'Name', render: (row) => row.name },
       { label: 'Protocol', render: (row) => row.protocol === 'modbus_tcp' ? 'Modbus TCP' : 'Modbus RTU' },

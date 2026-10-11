@@ -1,13 +1,16 @@
 import { useState } from 'react';
-import { Alert, Button, MenuItem, Stack, TextField } from '@mui/material';
+import { Alert, Box, Button, MenuItem, TextField, Typography } from '@mui/material';
 import { editable, devicesApi, tagsApi } from '../api/configuration';
 import EntityEditor from '../components/EntityEditor';
 import HistorySettings from '../components/HistorySettings';
 import ManagementPage from '../components/ManagementPage';
+import MobileDataCard, { DetailFields } from '../components/data/MobileDataCard';
+import FilterPanel from '../components/data/FilterPanel';
 import { NumberInput, SelectInput, TextInput, Toggle } from '../components/ConfigurationFields';
 import { choices } from '../components/choices';
 import { LiveConnectionStatus, LiveValue } from '../components/LiveValues';
 import { useOptions } from '../hooks/useOptions';
+import { shellLayout } from '../layout/tokens';
 import type { DataType, Order, RegisterType, TagInput } from '../types/configuration';
 
 const registerTypes: RegisterType[] = ['coil', 'discrete_input', 'input_register', 'holding_register'];
@@ -27,11 +30,19 @@ export default function TagsPage() {
   const [register, setRegister] = useState('');
   const [enabled, setEnabled] = useState('');
   const [query, setQuery] = useState('');
+  const applied = new URLSearchParams(query);
+  const activeFilters = [
+    applied.get('search') && `Search: ${applied.get('search')}`,
+    applied.get('device_id') && `Device: ${devices.rows.find(item => String(item.id) === applied.get('device_id'))?.name ?? applied.get('device_id')}`,
+    applied.get('register_type') && `Register: ${applied.get('register_type')}`,
+    applied.get('enabled') && (applied.get('enabled') === 'true' ? 'Enabled' : 'Disabled'),
+  ].filter((label): label is string => !!label);
   return <ManagementPage key={query} title="Tags" api={tagsApi} query={query}
     filters={<>
       <LiveConnectionStatus />
       {devices.error && <Alert severity="error" sx={{ mb: 2 }}>Device options could not be loaded: {devices.error}</Alert>}
-      <Stack component="form" direction={{ xs: 'column', md: 'row' }} spacing={1} sx={{ mb: 2 }} onSubmit={(event) => {
+      <FilterPanel active={activeFilters} onReset={() => { setSearch(''); setDevice(''); setRegister(''); setEnabled(''); setQuery(''); }}>
+      <Box component="form" sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: 'minmax(0, 1fr)', sm: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(4, minmax(0, 1fr))' }, '& .MuiFormControl-root': { minWidth: 0 }, '& .MuiButton-root': { minHeight: shellLayout.touchTarget } }} onSubmit={(event) => {
       event.preventDefault();
       const params = new URLSearchParams();
       if (search) params.set('search', search);
@@ -41,11 +52,27 @@ export default function TagsPage() {
       setQuery(params.toString());
     }}>
       <TextField fullWidth label="Search name or key" value={search} onChange={(event) => setSearch(event.target.value)} />
-      <SelectInput label="Device filter" value={device} onChange={setDevice}><MenuItem value="">All devices</MenuItem>{devices.rows.map((item) => <MenuItem key={item.id} value={item.id}>{item.name}</MenuItem>)}</SelectInput>
+      <SelectInput label="Device filter" value={device} onChange={setDevice}><MenuItem value="">All devices</MenuItem>{devices.rows.map((item) => <MenuItem key={item.id} value={item.id} sx={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}>{item.name}</MenuItem>)}</SelectInput>
       <SelectInput label="Register filter" value={register} onChange={setRegister}><MenuItem value="">All registers</MenuItem>{choices(registerTypes)}</SelectInput>
       <SelectInput label="Enabled filter" value={enabled} onChange={setEnabled}><MenuItem value="">All states</MenuItem><MenuItem value="true">Enabled</MenuItem><MenuItem value="false">Disabled</MenuItem></SelectInput>
-      <Button type="submit">Apply</Button><Button onClick={() => { setSearch(''); setDevice(''); setRegister(''); setEnabled(''); setQuery(''); }}>Reset</Button>
-    </Stack></>}
+      <Button type="submit" variant="outlined">Apply</Button>
+    </Box></FilterPanel></>}
+    mobile={(row, actions) => <MobileDataCard name={row.name}
+      primary={<Typography variant="h5" component="p"><LiveValue tagId={row.id} field="value" />{row.unit && <> {row.unit}</>}</Typography>}
+      status={<LiveValue tagId={row.id} field="quality" />}
+      details={<DetailFields fields={[
+        ['Key', row.key], ['Register type', row.register_type], ['Address (zero-based)', row.address], ['Data type', row.data_type],
+        ['Byte / word order', `${row.byte_order} / ${row.word_order}`], ['Scale / offset', `${row.scale} / ${row.offset}`],
+        ['Poll interval', `${row.poll_interval_ms} ms`], ['Enabled', row.enabled ? 'Yes' : 'No'],
+        ['Value source', <LiveValue tagId={row.id} field="source" />], ['State updated', <LiveValue tagId={row.id} field="updated" />],
+        ['Error', <LiveValue tagId={row.id} field="error" />], ['Description', row.description || 'Not specified'],
+      ]} />}
+      actions={<><Button component="a" href={`/tags/${row.id}`}>Tag details</Button>{actions}</>}>
+      <DetailFields fields={[
+        ['Device', devices.rows.find(item => item.id === row.device_id)?.name ?? `#${row.device_id}`],
+        ['Last successful update', <LiveValue tagId={row.id} field="time" />],
+      ]} />
+    </MobileDataCard>}
     columns={[
       { label: 'Name / Key', render: (row) => <><a href={`/tags/${row.id}`}>{row.name}</a><br /><small>{row.key}</small></> },
       { label: 'Device', render: (row) => devices.rows.find((item) => item.id === row.device_id)?.name ?? `#${row.device_id}` },
