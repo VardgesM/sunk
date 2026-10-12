@@ -47,7 +47,7 @@ export default function AccountMenu() {
         <TextField label="Current password" type="password" autoComplete="current-password" value={current} onChange={e => setCurrent(e.target.value)} />
         <TextField label="New password" type="password" autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} helperText="Non-empty, up to 128 characters. All sessions will be revoked; sign in again." />
       </Stack></DialogContent>
-      <DialogActions><Button disabled={busy} onClick={closePassword}>Cancel</Button><Button disabled={busy || !password || !current} onClick={() => {
+      <DialogActions><Button disabled={busy} onClick={closePassword}>Cancel</Button><Button variant="contained" disabled={busy || !password || !current} onClick={() => {
         setBusy(true);
         void request('/auth/password', { method: 'POST', body: JSON.stringify({ current_password: current, password }) })
           .then(auth.refresh).catch(e => setError(String(e))).finally(() => { setBusy(false); setCurrent(''); setPassword(''); });

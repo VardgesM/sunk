@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, MenuItem, Stack, TextField, Typography } from '@mui/material';
+import { Alert, Box, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, MenuItem, Stack, TextField, Typography } from '@mui/material';
 import type { Tag } from '../types/configuration';
 import type { Widget, WidgetConfig, WidgetInput, WidgetLayout, WidgetType } from '../types/dashboards';
 
@@ -59,7 +59,7 @@ export default function WidgetEditor({ initial, tags, nextY, onSave, onClose }: 
       <Typography variant="subtitle2">Layout (also adjustable by dragging and resizing)</Typography>
       <Typography variant="caption" color="text.secondary">Phone viewing uses full-width cards that fit their content, with alarm lists first. Saved phone positions still control the order of other widgets. Editing preserves all three saved layouts.</Typography>
       {layouts.map((layout, index) => <Stack key={layout.breakpoint} spacing={1}><Typography>{layout.breakpoint === 'lg' ? 'Desktop' : layout.breakpoint === 'md' ? 'Tablet' : 'Phone'}</Typography>
-        <Stack direction="row" spacing={1}>{(['x','y','w','h'] as const).map(key => <TextField key={key} label={`${layout.breakpoint} ${key}`} type="number" size="small" sx={{ minWidth: 0, '& input': { px: 1 } }} value={layout[key]} disabled={layout.breakpoint === 'sm' && ['x','w'].includes(key)} onChange={e => setLayouts(rows => rows.map((l,i) => i === index ? { ...l, [key]: Number(e.target.value) } : l))} />)}</Stack>
+        <Box sx={{ display:'grid', gridTemplateColumns:{xs:'repeat(2, minmax(0, 1fr))',sm:'repeat(4, minmax(0, 1fr))'},gap:1 }}>{(['x','y','w','h'] as const).map(key => <TextField key={key} label={`${layout.breakpoint} ${key}`} type="number" size="small" sx={{ minWidth: 0, '& input': { px: 1 } }} value={layout[key]} disabled={layout.breakpoint === 'sm' && ['x','w'].includes(key)} onChange={e => setLayouts(rows => rows.map((l,i) => i === index ? { ...l, [key]: Number(e.target.value) } : l))} />)}</Box>
       </Stack>)}
     </Stack></DialogContent>
     <DialogActions><Button disabled={busy} onClick={onClose}>Cancel</Button><Button disabled={busy || !title.trim()} onClick={() => void save()} variant="contained">Save widget</Button></DialogActions>

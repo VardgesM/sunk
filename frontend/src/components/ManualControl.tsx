@@ -42,7 +42,7 @@ export default function ManualControl({ tag, confirmationRequired = false }: { t
   return <Stack spacing={2}>
     <Typography variant="h6">Manual control</Typography>
     {!available && <Alert severity="warning">Writes unavailable: physical writes are disabled, configuration is disabled, or the worker is offline.</Alert>}
-    {runtime?.mode === 'simulator' && <Alert severity="info">Simulated control â€” no physical device write.</Alert>}
+    {runtime?.mode === 'simulator' && <Alert severity="info">Simulated control — no physical device write.</Alert>}
     <Typography>Actual: <LiveValue tagId={tag.id} field="value" control /> {tag.unit}</Typography>
     <LiveValue tagId={tag.id} field="quality" />
     {boolean ? <TextField select label="Requested state" value={on ? 'on' : 'off'} onChange={(event) => setOn(event.target.value === 'on')}>

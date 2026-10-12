@@ -32,7 +32,7 @@ function DashboardForm({ initial, onSave, onClose }: { initial?: Dashboard; onSa
     <TextField label="Slug" value={form.slug} onChange={e => setForm({ ...form, slug: e.target.value })} helperText="Lowercase letters, numbers and hyphens. Must be unique." required />
     <TextField label="Description" multiline value={form.description ?? ''} onChange={e => setForm({ ...form, description: e.target.value || null })} />
     <FormControlLabel label="Default dashboard" control={<Checkbox checked={form.is_default} onChange={e => setForm({ ...form, is_default: e.target.checked })} />} />
-  </Stack></DialogContent><DialogActions><Button disabled={busy} onClick={onClose}>Cancel</Button><Can permission="configure"><Button disabled={busy || !form.name.trim() || !form.slug.trim()} onClick={() => void save()}>Save dashboard</Button></Can></DialogActions></Dialog>;
+  </Stack></DialogContent><DialogActions><Button disabled={busy} onClick={onClose}>Cancel</Button><Can permission="configure"><Button variant="contained" disabled={busy || !form.name.trim() || !form.slug.trim()} onClick={() => void save()}>Save dashboard</Button></Can></DialogActions></Dialog>;
 }
 
 function Canvas({ dashboard, tags, reload, report }: { dashboard: DashboardDetail; tags: Tag[]; reload: () => Promise<void>; report: (message: string) => void }) {

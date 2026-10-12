@@ -20,8 +20,8 @@ shared shell sizes. Feature pages keep their own content and permissions.
   Dismissing a mobile drawer restores focus to the menu button.
 - Users, Audit, Backup & Restore and Updates use their existing permission
   keys. Frontend visibility never replaces backend authorization.
-- History stays in Tag details; dashboard editing stays in Dashboard. No new
-  routes, API calls, stores or WebSocket connections are introduced by the shell.
+- History is available at `/history` and in Tag details; dashboard editing stays
+  in Dashboard. The shell adds no API calls, stores or WebSocket connections.
 - Existing alarm summary and API status appear in the navigation footer;
   source/simulation warnings remain above page content. Diagnostics stay in System.
 
@@ -43,6 +43,23 @@ width. Do not connect this review to physical equipment or issue real commands.
 UI Phase 2 adds shared responsive data views for Tags, Devices, Connections,
 Locations and Commands (see `../components/data/README.md`). These pages switch
 to cards below MUI `md`; the navigation drawer independently uses `lg`.
-Forms, charts, dashboard widgets and other pages may need further mobile work.
-The Automation status row only gains wrapping, so long status labels cannot
-expand the entire document on phones.
+Later UI phases add responsive Dashboard, Automation, Alarms and History views.
+
+## Final consistency audit
+
+`theme.ts` retains the existing palette/font and defines common presentation
+defaults for both normal content and MUI portals: 44 px buttons/menu targets,
+wrapping long text/select options/chips, readable mobile headings, mobile dialog
+margins (without shrinking full-screen forms), and wrapping dialog actions. Feature-level permissions, handlers,
+requests and validation remain unchanged. Users reuse the existing RowActions
+and StatusBadge components; destructive operations still require confirmation.
+Widget layout fields use two columns on phones and four from `sm`; saved
+layout values are unchanged. System content is not reorganized.
+
+Audit actual pages and dialogs with mocked HTTP/WebSocket data at 320x760,
+360x800, 390x844, 768x1024, 1024x768 and 1440x900. Review roles, focus restoration,
+long names/errors, empty/loading/error states and viewport overflow. The
+disposable Chromium scripts/screenshots are local test artifacts, not a new
+permanent screenshot framework. Existing wide desktop tables keep their own
+scroll area; phone cards remain cards. The known Vite bundle-size warning is
+outside this presentation audit.
