@@ -7,6 +7,7 @@ import { SVGRenderer } from 'echarts/renderers';
 import { getHistory } from '../api/history';
 import type { Widget } from '../types/dashboards';
 import type { HistoryResponse } from '../types/history';
+import { historyTooltip } from '../components/history/presentation';
 register([LineChart, GridComponent, TooltipComponent, DataZoomComponent, LegendComponent, AriaComponent, SVGRenderer]);
 
 function Plot({ data, legend }: { data: HistoryResponse[]; legend: boolean }) {
@@ -20,8 +21,7 @@ function Plot({ data, legend }: { data: HistoryResponse[]; legend: boolean }) {
         legend: { show: legend, type: 'scroll', left: 0, right: 0, top: 0,
           textStyle: { width: narrow ? 120 : 200, overflow: 'truncate' } },
         grid: { left: 8, right: 12, top: legend ? 65 : 30, bottom: 65, containLabel: true },
-        tooltip: { trigger: 'axis', renderMode: 'richText', confine: true,
-          textStyle: { width: narrow ? 180 : 300, overflow: 'break' } },
+        tooltip: historyTooltip(data, container.current?.clientWidth ?? 0, container.current?.clientHeight ?? 340),
         xAxis: { type: 'time', splitNumber: narrow ? 3 : 6, axisLabel: { hideOverlap: true, fontSize: 11 } },
       };
     };

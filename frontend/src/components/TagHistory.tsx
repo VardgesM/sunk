@@ -1,23 +1,26 @@
 import { useEffect, useState } from 'react';
-import { Alert, Button, CircularProgress, MenuItem, Stack, TextField, Typography } from '@mui/material';
+import { Alert, Box, Button, CircularProgress, Stack, Typography } from '@mui/material';
 import { getHistory } from '../api/history';
 import type { HistoryResponse } from '../types/history';
 import HistoricalChart from './HistoricalChart';
+import HistoryRangeControls from './history/HistoryRangeControls';
+import HistoryDataInfo from './history/HistoryDataInfo';
+import { isHistoryChartable, localHistoryTime } from './history/presentation';
 
-const ranges = [{ label: 'Last hour', hours: 1 }, { label: '6 hours', hours: 6 }, { label: '24 hours', hours: 24 }, { label: '7 days', hours: 168 }, { label: '30 days', hours: 720 }];
+type RangeQuery = { from: string; to: string };
 
-export default function TagHistory({ tagId }: { tagId: number }) {
+export default function TagHistory({ tagId, showHeading = true }: { tagId: number; showHeading?: boolean }) {
   const [range, setRange] = useState('1');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
-  const [request, setRequest] = useState(() => ({ from: new Date(Date.now() - 3600000).toISOString(), to: new Date().toISOString() }));
-  const [result, setResult] = useState<{ loading: boolean; data?: HistoryResponse; error?: string }>({ loading: true });
+  const [request, setRequest] = useState<RangeQuery>(() => ({ from: new Date(Date.now() - 3600000).toISOString(), to: new Date().toISOString() }));
+  const [result, setResult] = useState<{ tagId: number; query: RangeQuery; data?: HistoryResponse; error?: string }>();
   const [rangeError, setRangeError] = useState('');
   useEffect(() => {
     const controller = new AbortController();
     getHistory(tagId, request.from, request.to, controller.signal)
-      .then((data) => { if (!controller.signal.aborted) setResult({ loading: false, data }); })
-      .catch((error: unknown) => { if (!controller.signal.aborted) setResult({ loading: false, error: error instanceof Error ? error.message : 'History query failed' }); });
+      .then(data => { if (!controller.signal.aborted) setResult({ tagId, query: request, data }); })
+      .catch((error: unknown) => { if (!controller.signal.aborted) setResult({ tagId, query: request, error: error instanceof Error ? error.message : 'History query failed' }); });
     return () => controller.abort();
   }, [tagId, request]);
   function load(nextRange = range) {
@@ -26,32 +29,30 @@ export default function TagHistory({ tagId }: { tagId: number }) {
     if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || start >= end || end.getTime() - start.getTime() > 366 * 86400000) {
       setRangeError('Choose a valid start and end, no more than 366 days apart.'); return;
     }
-    setRangeError(''); setResult({ loading: true });
+    setRangeError('');
     setRequest({ from: start.toISOString(), to: end.toISOString() });
   }
-  return <Stack spacing={2}>
-    <Typography component="h2" variant="h5">History</Typography>
-    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
-      <TextField select label="Time range" value={range} sx={{ minWidth: 160 }} onChange={(event) => { setRange(event.target.value); if (event.target.value !== 'custom') load(event.target.value); }}>
-        {ranges.map(({ label, hours }) => <MenuItem key={hours} value={String(hours)}>{label}</MenuItem>)}<MenuItem value="custom">Custom</MenuItem>
-      </TextField>
-      {range === 'custom' && <>
-        <TextField label="Start (local time)" type="datetime-local" value={from} onChange={(event) => setFrom(event.target.value)} slotProps={{ inputLabel: { shrink: true } }} />
-        <TextField label="End (local time)" type="datetime-local" value={to} onChange={(event) => setTo(event.target.value)} slotProps={{ inputLabel: { shrink: true } }} />
-      </>}
-      <Button onClick={() => load()}>{range === 'custom' ? 'Apply / Refresh' : 'Refresh history'}</Button>
-    </Stack>
-    <Typography variant="body2">Times are shown in your local timezone. History refreshes on request; current values update live independently.</Typography>
+  const matched = result?.tagId === tagId && result.query === request;
+  const loading = !matched;
+  const data = matched ? result.data : undefined;
+  const error = matched ? result.error : undefined;
+  return <Stack spacing={2} sx={{ minWidth: 0, overflowWrap: 'anywhere', '& .MuiAlert-message': { minWidth: 0, overflowWrap: 'anywhere' } }}>
+    {showHeading && <Typography component="h2" variant="h5">History</Typography>}
+    <HistoryRangeControls range={range} from={from} to={to} loading={loading} onFrom={setFrom} onTo={setTo} onLoad={() => load()}
+      onRange={next => { setRange(next); setRangeError(''); if (next !== 'custom') load(next); }} />
+    <Box>
+      <Typography variant="body2" fontWeight={600}>{loading ? 'Requested range' : 'Applied range'} (local time)</Typography>
+      <Typography variant="body2">{localHistoryTime(request.from)} – {localHistoryTime(request.to)}</Typography>
+      <Typography variant="caption" color="text.secondary">History refreshes on request; current values update live independently.</Typography>
+    </Box>
     {rangeError && <Alert severity="error">{rangeError}</Alert>}
-    {result.loading && <Stack direction="row" gap={1} role="status"><CircularProgress size={20} />Loading history…</Stack>}
-    {result.error && <Alert severity="error">{result.error}</Alert>}
-    {result.data && <>
-      <Typography variant="body2">{result.data.count} points from {result.data.total_count} stored records{result.data.downsampled ? ' — time buckets; numeric points show averages' : ''}.</Typography>
-      {!!result.data.count && <Typography variant="body2">Sources: {[...new Set(result.data.points.map((point) => point.source ?? 'unknown / legacy or mixed bucket'))].join(', ')}</Typography>}
-      {result.data.count === 0 ? <Alert severity="info">No history in this range. Enable history on the tag and wait for a sample.</Alert>
-        : result.data.tag.data_type === 'bool' || ['uint16', 'int16', 'uint32', 'int32', 'uint64', 'int64', 'float32', 'float64'].includes(result.data.tag.data_type)
-          ? <HistoricalChart history={result.data} /> : <Alert severity="info">This value type is not chartable.</Alert>}
-      {result.data.downsampled && <Typography variant="body2">Buckets containing an invalid quality or multiple boolean states appear as gaps. Zooming changes the view; choose a shorter time range to request finer detail.</Typography>}
-    </>}
+    {data?.truncated && <Alert severity="warning">The API limited this result. Only returned points are displayed; select a shorter range for more detail.</Alert>}
+    <Box aria-busy={loading} sx={{ minWidth: 0, minHeight: { xs: 480, sm: 520 } }}>
+      {loading ? <Stack spacing={2} alignItems="center" justifyContent="center" role="status" sx={{ minHeight: { xs: 480, sm: 520 } }}><CircularProgress size={24} /><Typography>Loading history…</Typography></Stack>
+        : error ? <Alert severity="error" action={<Button onClick={() => setRequest({ ...request })} sx={{ minHeight: 44 }}>Retry history</Button>}>{error}</Alert>
+          : data?.count === 0 ? <Alert severity="info">No historical data for this period. Try another range; history may not have been recorded for this Tag.</Alert>
+            : data && (isHistoryChartable(data) ? <HistoricalChart history={data} /> : <Alert severity="info">This value type is not chartable.</Alert>)}
+    </Box>
+    {data && <HistoryDataInfo history={data} />}
   </Stack>;
 }

@@ -12,6 +12,7 @@ vi.mock('../components/RuntimeStatus', () => ({ SourceMode: () => <span>Source s
 vi.mock('../pages/DashboardsPage', () => ({ default: () => <h1>Dashboard page</h1> }));
 vi.mock('../pages/TagsPage', () => ({ default: () => <h1>Tags page</h1> }));
 vi.mock('../pages/TagDetailsPage', () => ({ default: () => <h1>Tag details page</h1> }));
+vi.mock('../pages/HistoryPage', () => ({ default: () => <h1>History page</h1> }));
 vi.mock('../pages/AlarmsPage', () => ({ default: () => <h1>Alarms page</h1> }));
 vi.mock('../pages/CommandsPage', () => ({ default: () => <h1>Commands page</h1> }));
 vi.mock('../pages/AutomationPage', () => ({ default: () => <h1>Automation page</h1> }));
@@ -48,7 +49,7 @@ describe('responsive application navigation', () => {
     const nav = screen.getByRole('navigation', { name: 'Main navigation' });
     for (const name of ['Overview', 'Monitoring', 'Control', 'Configuration', 'System']) expect(within(nav).getByRole('region', { name })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Open navigation' })).not.toBeInTheDocument();
-    expect(within(nav).getAllByRole('link')).toHaveLength(13);
+    expect(within(nav).getAllByRole('link')).toHaveLength(14);
     expect(within(nav).getByRole('link', { name: 'Dashboard' })).toHaveAttribute('aria-current', 'page');
     await userEvent.click(within(nav).getByRole('link', { name: 'Tags' }));
     expect(await screen.findByRole('heading', { name: 'Tags page' })).toBeInTheDocument();
@@ -110,7 +111,7 @@ describe('responsive application navigation', () => {
   it.each(['VIEWER', 'OPERATOR', 'ADMIN'] as const)('preserves %s navigation permissions', role => {
     show('/dashboard', { ...state, user: { ...state.user!, role, permissions: role === 'ADMIN' ? state.user!.permissions : ['read', ...(role === 'OPERATOR' ? ['command', 'acknowledge'] : [])] } });
     for (const name of ['Users', 'Audit', 'Backup & Restore', 'Updates']) expect(screen.queryByRole('link', { name }) !== null).toBe(role === 'ADMIN');
-    for (const name of ['Dashboard', 'Tags', 'Devices', 'Alarms', 'Commands', 'Automation', 'System']) expect(screen.getByRole('link', { name })).toBeInTheDocument();
+    for (const name of ['Dashboard', 'Tags', 'History', 'Devices', 'Alarms', 'Commands', 'Automation', 'System']) expect(screen.getByRole('link', { name })).toBeInTheDocument();
   });
   it.each(['/users', '/audit', '/settings/backups', '/settings/updates'])('keeps direct ADMIN route %s protected', async path => {
     show(path, { ...state, user: { ...state.user!, role: 'VIEWER', permissions: ['read'] } });
@@ -118,6 +119,7 @@ describe('responsive application navigation', () => {
     expect(screen.queryByRole('heading', { level: 1 })).not.toBeInTheDocument();
   });
   it.each([
+    ['/history', 'History'],
     ['/dashboard', 'Dashboard'], ['/locations', 'Locations'], ['/connections', 'Connections'], ['/devices', 'Devices'], ['/tags', 'Tags'], ['/tags/42', 'Tag details'], ['/commands', 'Commands'], ['/automation', 'Automation'], ['/alarms', 'Alarms'], ['/users', 'Users'], ['/audit', 'Audit'], ['/settings', 'System'], ['/settings/backups', 'Backup & Restore'], ['/settings/updates', 'Updates'],
   ])('preserves the existing %s route', async (path, title) => {
     show(path);

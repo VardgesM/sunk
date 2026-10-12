@@ -18,6 +18,7 @@ const ConnectionsPage = lazy(() => import('./pages/ConnectionsPage'));
 const DevicesPage = lazy(() => import('./pages/DevicesPage'));
 const TagsPage = lazy(() => import('./pages/TagsPage'));
 const TagDetailsPage = lazy(() => import('./pages/TagDetailsPage'));
+const HistoryPage = lazy(() => import('./pages/HistoryPage'));
 
 export default function App() {
   const location = useLocation();
@@ -38,6 +39,7 @@ export default function App() {
           <Route path="/automation" element={<AutomationPage />} />
           <Route path="/commands" element={<CommandsPage />} />
           <Route path="/tags" element={<TagsPage />} />
+          <Route path="/history" element={<HistoryPage />} />
           <Route path="/tags/:id" element={<TagDetailsPage key={location.pathname} />} />
           {['Settings'].map((page) => <Route key={page} path={`/${page.toLowerCase()}`} element={<SystemPage />} />)}
           <Route path="*" element={<Typography component="h1">Page not found</Typography>} />

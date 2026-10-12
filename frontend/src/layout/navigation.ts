@@ -19,6 +19,7 @@ export const navigationGroups = [
   ] },
   { label: 'Monitoring', items: [
     { label: 'Tags', path: '/tags', icon: LabelOutlined },
+    { label: 'History', path: '/history', icon: HistoryOutlined },
     { label: 'Alarms', path: '/alarms', icon: NotificationsOutlined },
   ] },
   { label: 'Control', items: [
