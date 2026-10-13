@@ -56,8 +56,11 @@ Hysteresis never automatically creates an opposite action: use a separate explic
 Consumed edges, latches, cooldown and results are persisted. On worker restart, incomplete FOR timers
 restart from the first fresh observation, since continuity during downtime is unproven. An already
 triggered true edge is not replayed; a successful unchanged rule can reconcile a fresh output mismatch
-after a new FOR observation period. After editing or enabling an existing rule, it must observe a
-valid false state before becoming eligible; this avoids executing an edited configuration immediately.
+after a new FOR observation period. Creating, editing or enabling a stateful SET_TAG_VALUE rule
+prepares a new desired-state intent: a false/true edge is not required. All condition and output
+readings must be collected after the rule's configuration timestamp, and after worker recovery when
+applicable. FOR starts from the first fresh valid true observation; existing cooldown is retained.
+Unchanged failed executions are not re-armed simply by polling or restarting the worker.
 
 ## Cooldown, conflicts and failures
 
@@ -93,8 +96,9 @@ While the condition remains qualified, a successful, unchanged rule compares **a
 values**, not the last sent command, with its desired values. Both initial activation and correction
 require every target to be enabled and readable with GOOD quality, matching source (simulator or its
 configured Modbus protocol), a correctly typed value and an age between zero and
-`poll_interval_ms * STALE_MULTIPLIER`. Samples must postdate target/device/connection configuration;
-after worker recovery they must also be read after that recovery. Correction requires a sample newer
+`poll_interval_ms * STALE_MULTIPLIER`. Both condition and output samples must postdate the rule
+configuration and their Tag/device/connection configuration. After worker recovery both must also
+be read after that recovery; refreshing only the output or only the condition is insufficient. Correction requires a sample newer
 than the prior successful execution completion. Retained values under COMM_ERROR, BAD, STALE,
 DISABLED, unknown source, missing values and future timestamps cannot authorize writes.
 
@@ -120,8 +124,12 @@ A FAILED/PARTIAL_FAILURE, CANCELLED/EXPIRED command, interrupted write, or SKIPP
 is **not automatically retried by reconciliation**. Its consumed edge and execution history survive
 restart. Inspect the cause and use the existing valid false/true re-arm path. This bounds corrective
 attempts and leaves transient retries/read-back-only retries to the existing command processor.
-Editing/enabling a rule still requires a valid false/true observation: previous-version success does
-not authorize changed actions. No database runtime flags should be manually reset to bypass this.
+An explicit edit/enable creates a new configuration version. SET_TAG_VALUE can qualify that new
+version from its current true condition, without needing previous-version success or a false/true
+edge. Old pending execution must settle first; the command processor still rejects obsolete rule
+versions. Quality, FOR, cooldown, priority and pending-command checks remain mandatory. No database
+runtime flags should be manually reset to activate rules. Non-stateful action kinds do not receive
+this preparation behavior; pulse/toggle/one-shot actions remain unsupported.
 
 Manual control is not a new override mode: while a stateful rule remains enabled and qualified,
 a fresh manually changed output can be corrected back to the rule's desired value after its command
@@ -157,7 +165,7 @@ their owning rules and competing rules sharing outputs. Unrelated rules remain s
 
 ## Verification
 
-`python -m pytest tests/test_automation.py tests/test_automation_reconciliation.py` covers validation, edge state, quality, ALL/ANY, operators,
+`python -m pytest tests/test_automation.py tests/test_automation_reconciliation.py tests/test_automation_edits.py` covers validation, edge state, quality, ALL/ANY, operators,
 FOR, hysteresis, cooldown, priority, multiple actions, simulator verification and restart behavior.
 `python tests/compose_automation_smoke.py` creates a disposable Compose project, uses manual simulator
 commands to set deterministic inputs, checks ON/OFF and multi-condition rules, history/WebSocket,

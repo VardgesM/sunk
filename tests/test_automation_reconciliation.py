@@ -153,7 +153,7 @@ async def test_pending_command_blocks_entire_batch(api, database_sessions, statu
 
 @pytest.mark.parametrize(
     "change",
-    ["disabled_rule", "false_condition", "bad_condition", "edited_rule", "disabled_target"],
+    ["disabled_rule", "false_condition", "bad_condition", "disabled_target"],
 )
 async def test_inactive_or_changed_configuration_does_not_reconcile(api, database_sessions, change):
     a, _, relay, rule, e, now = await setup(api, database_sessions)
@@ -161,8 +161,6 @@ async def test_inactive_or_changed_configuration_does_not_reconcile(api, databas
     await e.tick(now)
     if change == "disabled_rule":
         await api.patch(f"/api/automation/rules/{rule['id']}", json={"enabled": False})
-    if change == "edited_rule":
-        await api.patch(f"/api/automation/rules/{rule['id']}", json={"name": "Edited"})
     if change == "disabled_target":
         await api.patch(f"/api/tags/{relay['id']}", json={"enabled": False})
     t = now + timedelta(seconds=5)
@@ -329,6 +327,7 @@ async def test_restart_requires_post_restart_target_read(api, database_sessions)
     await restarted.tick(datetime.now(UTC))
     assert len(await commands(database_sessions)) == 1
     t = datetime.now(UTC)
+    await sample(database_sessions, a, 31, t)
     await sample(database_sessions, relay, False, t)
     await restarted.tick(t)
     assert len(await commands(database_sessions)) == 2

@@ -18,6 +18,7 @@ def usable_value(
     current: TagCurrentValue | None,
     settings: Settings,
     now: datetime,
+    not_before: datetime | None = None,
 ) -> Decimal | bool | None:
     if not (tag.enabled and device.enabled and connection.enabled and current):
         return None
@@ -31,6 +32,11 @@ def usable_value(
         <= (now - utc(current.source_timestamp)).total_seconds() * 1000
         <= tag.poll_interval_ms * settings.stale_multiplier
     ):
+        return None
+    earliest = max(utc(row.updated_at) for row in (tag, device, connection))
+    if not_before is not None:
+        earliest = max(earliest, utc(not_before))
+    if utc(current.source_timestamp) < earliest:
         return None
     value = current.value_boolean if tag.data_type == "bool" else current.value_numeric
     if value is None or (type(value) is bool) != (tag.data_type == "bool"):

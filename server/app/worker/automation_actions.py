@@ -98,13 +98,8 @@ async def apply_desired_state(
                 desired = value_of(action)
                 validate_write(tag, device, connection, desired)
                 current = currents.get(tag.id)
-                actual = usable_value(tag, device, connection, current, settings, now)
-                configured_at = max(utc(row.updated_at) for row in (tag, device, connection))
-                if (
-                    actual is None
-                    or utc(current.source_timestamp) < configured_at
-                    or (not_before and utc(current.source_timestamp) < not_before)
-                ):
+                actual = usable_value(tag, device, connection, current, settings, now, not_before)
+                if actual is None:
                     unavailable = True
                     continue
                 matched = matches(tag, desired, actual)

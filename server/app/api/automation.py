@@ -85,7 +85,7 @@ async def patch_rule(identifier: Identifier, session: Session, changes: dict = B
     runtime.state = "IDLE" if rule.enabled else "DISABLED"
     runtime.true_since = None
     runtime.condition_state = False
-    runtime.armed = False  # Edited/enabled rules must observe a valid false state before firing.
+    runtime.armed = False  # Worker prepares stateful intents only after fresh observations.
     runtime.latches = {}
     runtime.error = None
     await session.commit()

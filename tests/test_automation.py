@@ -135,6 +135,7 @@ async def test_simulator_for_edge_hysteresis_restart_and_execution_log(api, data
     assert r.status_code == 201, r.text
     identifier = r.json()["id"]
     now = datetime.now(UTC)
+    await sample(database_sessions, relay, False, now)
     e = engine(database_sessions)
     await sample(database_sessions, a, 29, now)
     await e.tick(now)
@@ -179,6 +180,7 @@ async def test_multiple_conditions(api, database_sessions, mode, expected):
     payload["conditions"].append({"tag_id": b["id"], "operator": ">=", "value": 80})
     assert (await api.post("/api/automation/rules", json=payload)).status_code == 201
     now = datetime.now(UTC)
+    await sample(database_sessions, relay, False, now)
     await sample(database_sessions, a, 31, now)
     await sample(database_sessions, b, 79, now)
     e = engine(database_sessions)
@@ -194,6 +196,7 @@ async def test_invalid_quality_resets_for(api, database_sessions, quality):
     a, _, relay = await fixtures(api, database_sessions)
     await api.post("/api/automation/rules", json=rule_payload(a, relay, for_duration_ms=2000))
     now = datetime.now(UTC)
+    await sample(database_sessions, relay, False, now)
     e = engine(database_sessions)
     await sample(database_sessions, a, 31, now)
     await e.tick(now)
@@ -227,6 +230,7 @@ async def test_priority_conflict_multiple_actions_and_disabled(api, database_ses
         "/api/automation/rules", json=rule_payload(b, second, enabled=False, priority=100)
     )
     now = datetime.now(UTC)
+    await sample(database_sessions, relay, False, now)
     await sample(database_sessions, a, 31, now)
     await sample(database_sessions, b, 31, now)
     await sample(database_sessions, second, True, now)
@@ -248,6 +252,7 @@ async def test_physical_master_disabled_and_source_provenance(api, database_sess
         Settings(postgres_password="test", telemetry_source="modbus"),
     )
     now = datetime.now(UTC)
+    await sample(database_sessions, relay, False, now)
     await sample(database_sessions, a, 31, now)
     await e.tick(now)
     assert not await commands(database_sessions)
@@ -263,6 +268,7 @@ async def test_edit_disable_invalidates_queued_command(api, database_sessions):
     a, _, relay = await fixtures(api, database_sessions)
     r = await api.post("/api/automation/rules", json=rule_payload(a, relay))
     now = datetime.now(UTC)
+    await sample(database_sessions, relay, False, now)
     await sample(database_sessions, a, 31, now)
     e = engine(database_sessions)
     await e.tick(now)
@@ -326,6 +332,7 @@ async def test_boolean_condition_and_worker_restart_resets_incomplete_for(api, d
     assert r.status_code == 201
     now = datetime.now(UTC)
     await sample(database_sessions, relay, False, now)
+    await sample(database_sessions, relay, False, now)
     first = engine(database_sessions)
     await first.tick(now)
     second = engine(database_sessions)
@@ -342,6 +349,7 @@ async def test_stale_good_value_cannot_trigger_and_rule_reload(api, database_ses
     a, _, relay = await fixtures(api, database_sessions)
     e = engine(database_sessions)
     now = datetime.now(UTC)
+    await sample(database_sessions, relay, False, now)
     await e.tick(now)
     r = await api.post("/api/automation/rules", json=rule_payload(a, relay))
     await sample(database_sessions, a, 31, now - timedelta(seconds=60))
@@ -349,6 +357,7 @@ async def test_stale_good_value_cannot_trigger_and_rule_reload(api, database_ses
     assert not await commands(database_sessions)
     runtime = (await api.get(f"/api/automation/rules/{r.json()['id']}")).json()["runtime"]
     assert runtime["state"] == "ERROR"
+    await sample(database_sessions, relay, False, now + timedelta(seconds=4))
     await sample(database_sessions, a, 31, now + timedelta(seconds=4))
     await e.tick(now + timedelta(seconds=4))
     assert len(await commands(database_sessions)) == 1
@@ -372,6 +381,7 @@ async def test_multi_action_partial_failure_and_log(api, database_sessions):
     payload["actions"].append({"target_tag_id": target["id"], "value": "5"})
     r = await api.post("/api/automation/rules", json=payload)
     now = datetime.now(UTC)
+    await sample(database_sessions, relay, False, now)
     await sample(database_sessions, a, 31, now)
     e = engine(database_sessions)
     await e.tick(now)
@@ -437,6 +447,7 @@ async def test_unchanged_and_unrelated_inputs_do_not_re_evaluate(
     a, b, relay = await fixtures(api, database_sessions)
     await api.post("/api/automation/rules", json=rule_payload(a, relay))
     now = datetime.now(UTC)
+    await sample(database_sessions, relay, False, now)
     await sample(database_sessions, a, 20, now)
     comparison = Mock(wraps=module.compare)
     monkeypatch.setattr(module, "compare", comparison)

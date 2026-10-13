@@ -28,7 +28,7 @@ from app.services.automation import children, value_of
 from app.services.automation_evaluation import advance, compare
 from app.services.commands import TERMINAL
 from app.worker.automation_actions import apply_desired_state
-from app.worker.automation_state import TARGET_ERROR
+from app.worker.automation_state import TARGET_ERROR, usable_value
 
 logger = logging.getLogger(__name__)
 
@@ -195,35 +195,24 @@ class AutomationEngine:
                     if rule is None or utc(rule.updated_at) != utc(cached.updated_at):
                         continue
                     runtime = await session.get(AutomationRuntime, rule.id)
+                    # New/edited desired state must be based on observations made after
+                    # that configuration, and after this worker acquired ownership.
+                    not_before = max(
+                        utc(rule.updated_at), self.recovered_at or utc(rule.updated_at)
+                    )
                     snapshot, truths, valid = [], [], True
                     latches = dict(runtime.latches)
                     for condition in conditions:
                         row = inputs.get(condition.tag_id)
                         tag, device, connection, current = row if row else (None, None, None, None)
-                        fresh = bool(
-                            current
-                            and current.source_timestamp
-                            and (now - utc(current.source_timestamp)).total_seconds() * 1000
-                            <= tag.poll_interval_ms * self.settings.stale_multiplier
-                        )
-                        source_ok = bool(
-                            current
-                            and (
-                                current.source == "simulator"
-                                if self.settings.source_mode == "simulator"
-                                else current.source in ("modbus_rtu", "modbus_tcp")
+                        usable = (
+                            usable_value(
+                                tag, device, connection, current, self.settings, now, not_before
                             )
+                            if row
+                            else None
                         )
-                        good = bool(
-                            row
-                            and tag.enabled
-                            and device.enabled
-                            and connection.enabled
-                            and current
-                            and current.quality == "GOOD"
-                            and fresh
-                            and source_ok
-                        )
+                        good = usable is not None
                         value = (
                             (
                                 current.value_boolean
@@ -273,10 +262,6 @@ class AutomationEngine:
                         )
                         .limit(1)
                     )
-                    if runtime.error == TARGET_ERROR:
-                        runtime.error = None
-                    previous_trigger = runtime.last_triggered_at
-                    fire = advance(rule, runtime, truth, now, bool(pending))
                     last_execution = await session.scalar(
                         select(AutomationExecution)
                         .where(AutomationExecution.rule_id == rule.id)
@@ -286,6 +271,16 @@ class AutomationEngine:
                     same_version = bool(
                         last_execution and utc(last_execution.rule_version) == utc(rule.updated_at)
                     )
+                    stateful = bool(actions) and all(a.kind == "SET_TAG_VALUE" for a in actions)
+                    if rule.enabled and stateful and not same_version:
+                        # Preparing a new configuration is not replaying a consumed edge.
+                        # Do not reset FOR/cooldown on each tick, or re-arm failed executions
+                        # of this version. Freshness gates below still authorize every write.
+                        runtime.armed = True
+                    if runtime.error == TARGET_ERROR:
+                        runtime.error = None
+                    previous_trigger = runtime.last_triggered_at
+                    fire = advance(rule, runtime, truth, now, bool(pending))
                     duration_ready = bool(
                         runtime.true_since
                         and now
@@ -327,7 +322,7 @@ class AutomationEngine:
                             conflict=conflict,
                             previous_trigger=previous_trigger,
                             last_execution=last_execution,
-                            not_before=self.recovered_at,
+                            not_before=not_before,
                         )
                 if runtime.state in ("WAITING_FOR_DURATION", "COOLDOWN") or (
                     runtime.armed and runtime.condition_state
