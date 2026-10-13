@@ -45,6 +45,7 @@
 - Automation may only request control actions through the existing persistent command pipeline. Automation must never perform direct Modbus writes.
 - Automation requires fresh GOOD values with matching source provenance. Preserve consumed edges across restarts; restart uncompleted FOR timers.
 - Keep automation configuration relational, log executions and retain linked command history. Rules with execution history cannot be deleted.
+- Stateful SET_TAG_VALUE reconciliation uses fresh authoritative output reads and the existing command queue. Never replay failed/uncertain commands or let lower-priority rules fight active higher-priority desired states.
 
 - Alarms report abnormal conditions independently from Automation; they never perform control actions.
 - Secrets such as Telegram bot tokens must never be committed, logged, returned by APIs, or stored in frontend code.

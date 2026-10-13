@@ -16,7 +16,7 @@ from app.worker.automation import AutomationEngine
 pytestmark = pytest.mark.anyio
 
 
-async def fixtures(api):
+async def fixtures(api, database_sessions):
     numeric = await setup_tag(api, key="input_a", poll_interval_ms=5000)
     other = await create(
         api,
@@ -41,6 +41,7 @@ async def fixtures(api):
         writable=True,
         poll_interval_ms=5000,
     )
+    await sample(database_sessions, relay, False, datetime.now(UTC))
     return numeric, other, relay
 
 
@@ -81,8 +82,8 @@ async def commands(sessions):
         return list(await session.scalars(select(Command).order_by(Command.id)))
 
 
-async def test_crud_validation_and_restrictive_delete(api):
-    a, _, relay = await fixtures(api)
+async def test_crud_validation_and_restrictive_delete(api, database_sessions):
+    a, _, relay = await fixtures(api, database_sessions)
     payload = rule_payload(a, relay)
     r = await api.post("/api/automation/rules", json=payload)
     assert r.status_code == 201, r.text
@@ -122,14 +123,14 @@ async def test_crud_validation_and_restrictive_delete(api):
         {"actions": [{"target_tag_id": 3, "value": 1}]},
     ],
 )
-async def test_invalid_rules(api, change):
-    a, _, relay = await fixtures(api)
+async def test_invalid_rules(api, database_sessions, change):
+    a, _, relay = await fixtures(api, database_sessions)
     response = await api.post("/api/automation/rules", json=rule_payload(a, relay, **change))
     assert response.status_code == 422, response.text
 
 
 async def test_simulator_for_edge_hysteresis_restart_and_execution_log(api, database_sessions):
-    a, _, relay = await fixtures(api)
+    a, _, relay = await fixtures(api, database_sessions)
     r = await api.post("/api/automation/rules", json=rule_payload(a, relay, for_duration_ms=2000))
     assert r.status_code == 201, r.text
     identifier = r.json()["id"]
@@ -166,13 +167,14 @@ async def test_simulator_for_edge_hysteresis_restart_and_execution_log(api, data
     await sample(database_sessions, a, 31, t)
     await restarted.tick(t)
     await restarted.tick(t + timedelta(seconds=2))
-    assert len(await commands(database_sessions)) == 2
+    # The output is already ON: a new condition edge does not redundantly write it.
+    assert len(await commands(database_sessions)) == 1
     assert (await api.delete(f"/api/automation/rules/{identifier}")).status_code == 409
 
 
 @pytest.mark.parametrize("mode,expected", [("ALL", 0), ("ANY", 1)])
 async def test_multiple_conditions(api, database_sessions, mode, expected):
-    a, b, relay = await fixtures(api)
+    a, b, relay = await fixtures(api, database_sessions)
     payload = rule_payload(a, relay, condition_mode=mode)
     payload["conditions"].append({"tag_id": b["id"], "operator": ">=", "value": 80})
     assert (await api.post("/api/automation/rules", json=payload)).status_code == 201
@@ -189,7 +191,7 @@ async def test_multiple_conditions(api, database_sessions, mode, expected):
 
 @pytest.mark.parametrize("quality", ["BAD", "STALE", "COMM_ERROR", "DISABLED"])
 async def test_invalid_quality_resets_for(api, database_sessions, quality):
-    a, _, relay = await fixtures(api)
+    a, _, relay = await fixtures(api, database_sessions)
     await api.post("/api/automation/rules", json=rule_payload(a, relay, for_duration_ms=2000))
     now = datetime.now(UTC)
     e = engine(database_sessions)
@@ -205,7 +207,7 @@ async def test_invalid_quality_resets_for(api, database_sessions, quality):
 
 
 async def test_priority_conflict_multiple_actions_and_disabled(api, database_sessions):
-    a, b, relay = await fixtures(api)
+    a, b, relay = await fixtures(api, database_sessions)
     second = await create(
         api,
         "tags",
@@ -227,6 +229,7 @@ async def test_priority_conflict_multiple_actions_and_disabled(api, database_ses
     now = datetime.now(UTC)
     await sample(database_sessions, a, 31, now)
     await sample(database_sessions, b, 31, now)
+    await sample(database_sessions, second, True, now)
     await engine(database_sessions).tick(now)
     assert len(await commands(database_sessions)) == 2
     assert (await api.get(f"/api/automation/rules/{low.json()['id']}/executions")).json()[0][
@@ -238,7 +241,7 @@ async def test_priority_conflict_multiple_actions_and_disabled(api, database_ses
 
 
 async def test_physical_master_disabled_and_source_provenance(api, database_sessions):
-    a, _, relay = await fixtures(api)
+    a, _, relay = await fixtures(api, database_sessions)
     r = await api.post("/api/automation/rules", json=rule_payload(a, relay))
     e = AutomationEngine(
         SimpleNamespace(sessions=database_sessions),
@@ -248,6 +251,7 @@ async def test_physical_master_disabled_and_source_provenance(api, database_sess
     await sample(database_sessions, a, 31, now)
     await e.tick(now)
     assert not await commands(database_sessions)
+    await sample(database_sessions, relay, False, now, source="modbus_tcp")
     await sample(database_sessions, a, 31, now, source="modbus_tcp")
     await e.tick(now)
     assert not await commands(database_sessions)
@@ -256,7 +260,7 @@ async def test_physical_master_disabled_and_source_provenance(api, database_sess
 
 
 async def test_edit_disable_invalidates_queued_command(api, database_sessions):
-    a, _, relay = await fixtures(api)
+    a, _, relay = await fixtures(api, database_sessions)
     r = await api.post("/api/automation/rules", json=rule_payload(a, relay))
     now = datetime.now(UTC)
     await sample(database_sessions, a, 31, now)
@@ -309,7 +313,7 @@ async def test_operators(op, value, threshold, expected):
 
 
 async def test_boolean_condition_and_worker_restart_resets_incomplete_for(api, database_sessions):
-    _, _, relay = await fixtures(api)
+    _, _, relay = await fixtures(api, database_sessions)
     r = await api.post(
         "/api/automation/rules",
         json=rule_payload(
@@ -326,6 +330,7 @@ async def test_boolean_condition_and_worker_restart_resets_incomplete_for(api, d
     await first.tick(now)
     second = engine(database_sessions)
     await second.recover()
+    await sample(database_sessions, relay, False, now + timedelta(seconds=1))
     await second.tick(now + timedelta(seconds=1))
     await second.tick(now + timedelta(seconds=2))
     assert not await commands(database_sessions)
@@ -334,7 +339,7 @@ async def test_boolean_condition_and_worker_restart_resets_incomplete_for(api, d
 
 
 async def test_stale_good_value_cannot_trigger_and_rule_reload(api, database_sessions):
-    a, _, relay = await fixtures(api)
+    a, _, relay = await fixtures(api, database_sessions)
     e = engine(database_sessions)
     now = datetime.now(UTC)
     await e.tick(now)
@@ -350,7 +355,7 @@ async def test_stale_good_value_cannot_trigger_and_rule_reload(api, database_ses
 
 
 async def test_multi_action_partial_failure_and_log(api, database_sessions):
-    a, _, relay = await fixtures(api)
+    a, _, relay = await fixtures(api, database_sessions)
     target = await create(
         api,
         "tags",
@@ -362,6 +367,7 @@ async def test_multi_action_partial_failure_and_log(api, database_sessions):
         data_type="uint16",
         writable=True,
     )
+    await sample(database_sessions, target, 0, datetime.now(UTC))
     payload = rule_payload(a, relay)
     payload["actions"].append({"target_tag_id": target["id"], "value": "5"})
     r = await api.post("/api/automation/rules", json=payload)
@@ -390,7 +396,7 @@ async def test_condition_constraints_and_foreign_keys(api, database_sessions):
 
     from app.models import AutomationCondition
 
-    a, _, relay = await fixtures(api)
+    a, _, relay = await fixtures(api, database_sessions)
     r = await api.post("/api/automation/rules", json=rule_payload(a, relay))
     async with database_sessions() as session:
         session.add(
@@ -428,7 +434,7 @@ async def test_unchanged_and_unrelated_inputs_do_not_re_evaluate(
 
     import app.worker.automation as module
 
-    a, b, relay = await fixtures(api)
+    a, b, relay = await fixtures(api, database_sessions)
     await api.post("/api/automation/rules", json=rule_payload(a, relay))
     now = datetime.now(UTC)
     await sample(database_sessions, a, 20, now)
@@ -445,11 +451,17 @@ async def test_unchanged_and_unrelated_inputs_do_not_re_evaluate(
 
 async def test_quality_recovery_clears_input_error_without_replaying_edge():
     rule = SimpleNamespace(enabled=True, for_duration_ms=0)
-    runtime = SimpleNamespace(state="IDLE", true_since=None, cooldown_until=None,
-                              armed=True, condition_state=False, error=None)
+    runtime = SimpleNamespace(
+        state="IDLE",
+        true_since=None,
+        cooldown_until=None,
+        armed=True,
+        condition_state=False,
+        error=None,
+    )
     now = datetime.now(UTC)
     assert advance(rule, runtime, True, now)
     assert not advance(rule, runtime, None, now)
-    assert runtime.state == 'ERROR'
+    assert runtime.state == "ERROR"
     assert not advance(rule, runtime, True, now)
-    assert runtime.state == 'ACTIVE' and runtime.error is None
+    assert runtime.state == "ACTIVE" and runtime.error is None

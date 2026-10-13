@@ -388,6 +388,10 @@ Apply `alembic upgrade head` (or recreate the API, whose startup applies migrati
 the worker and frontend to load Phase 7. For Windows COM ports use the existing native worker
 workflow, with `MODBUS_WRITES_ENABLED=false` during deployment.
 
+Stateful `SET_TAG_VALUE` actions reconcile fresh output mismatches after communication recovery,
+through the same verified command queue. Matching outputs are not rewritten; failed/uncertain commands
+are not automatically replayed. Disable relevant rules before manual output maintenance.
+
 See [Automation behavior, API, safety and simulator testing](docs/automation.md).
 Run `.\.venv\Scripts\python.exe tests/compose_automation_smoke.py` after
 `docker compose build api worker frontend` for the isolated simulator/browser integration.

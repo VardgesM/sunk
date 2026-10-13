@@ -33,12 +33,15 @@ accept real Modbus samples. Unknown or mismatched provenance is unusable.
 Conservatively, an invalid input makes the entire rule unknown, even in ANY mode. BAD, COMM_ERROR,
 STALE, DISABLED, missing or stale-but-GOOD inputs reset an incomplete FOR timer and show ERROR.
 They do not re-arm an already consumed true edge. For valid inputs ALL requires every condition;
-ANY requires at least one. Recovery from unknown quality alone does not replay a consumed action.
+ANY requires at least one. Recovery does not replay a consumed edge. Stateful actions may instead
+request a new corrective command after the conditions qualify again and a fresh usable output
+reading proves a mismatch (see desired-state reconciliation below).
 
 ## Edge, duration and hysteresis
 
 A new enabled rule may trigger from its first valid true observation. Continuously true state triggers
-once. A valid false aggregate re-arms the rule. A true state must persist for FOR milliseconds before
+once. A valid false aggregate re-arms the rule. Stateful output reconciliation is separate from this
+edge trigger; it does not periodically replay the action. A true state must persist for FOR milliseconds before
 a command is requested. With no duration it is eligible on the first observation. Input updates are
 sampled by the engine (about 250 ms); transitions occurring entirely between observations cannot be
 observed. Choose polling intervals appropriate to the process.
@@ -52,7 +55,8 @@ Hysteresis never automatically creates an opposite action: use a separate explic
 
 Consumed edges, latches, cooldown and results are persisted. On worker restart, incomplete FOR timers
 restart from the first fresh observation, since continuity during downtime is unproven. An already
-triggered true edge is not replayed. After editing or enabling an existing rule, it must observe a
+triggered true edge is not replayed; a successful unchanged rule can reconcile a fresh output mismatch
+after a new FOR observation period. After editing or enabling an existing rule, it must observe a
 valid false state before becoming eligible; this avoids executing an edited configuration immediately.
 
 ## Cooldown, conflicts and failures
@@ -63,16 +67,67 @@ never triggers periodically. While an earlier execution is pending, no further e
 is created. Failed/skipped executions consume the edge: correct the cause and observe false/true to
 retry. No autonomous retry of failed physical actions is added; normal command retry rules apply.
 
-Rules evaluate in descending priority, then ascending rule ID. In one evaluation cycle the first rule
-to reserve a target wins. A lower rule overlapping any reserved target is skipped as a whole. Any
-pending command on a target (manual or automation) also blocks that rule's entire action batch. Once
-commands complete, later independent edges may request different values. This is deterministic
-per-cycle reservation, not permanent output ownership or an interlock/safety controller.
-
+Rules evaluate in descending priority, then ascending rule ID. A qualified active higher-priority
+rule reserves its complete target batch even when already matched, cooling down, waiting for a
+command, or unable to read an output. A lower rule overlapping a reserved target is blocked as a
+whole and does not reserve its other targets. Competitors are evaluated together even when only a
+lower rule's input changed. This extends the existing deterministic reservation to desired-state
+maintenance; otherwise two continuously true conflicting rules could toggle an output indefinitely.
+Any pending command (manual or automation, same or different value) blocks the entire action batch.
+A lower rule's initial blocked edge is still SKIPPED and consumed as before. A previously successful
+lower rule can resume reconciliation after the higher rule ceases to qualify. This is not a safety
+interlock or global arbitration of manual commands.
 Command creation and execution links are atomic per rule. Physical execution of multiple actions
 cannot be atomic: successful actions are not undone when another action fails. The execution log
 reports SUCCESS, PARTIAL_FAILURE or FAILED after commands complete, or SKIPPED for a conflict.
 It records trigger time, comparison snapshot, errors and command IDs; detailed I/O stays in commands.
+
+## Desired-state reconciliation
+
+`SET_TAG_VALUE` is the only supported action kind, and represents an idempotent maintained value.
+There are no pulse/toggle/one-shot actions and no safe way to infer side-effect register semantics
+from a vendor address. Do not configure such registers as maintained SET_TAG_VALUE outputs; they
+require an explicit separate action type before they can be supported.
+
+While the condition remains qualified, a successful, unchanged rule compares **actual current Tag
+values**, not the last sent command, with its desired values. Both initial activation and correction
+require every target to be enabled and readable with GOOD quality, matching source (simulator or its
+configured Modbus protocol), a correctly typed value and an age between zero and
+`poll_interval_ms * STALE_MULTIPLIER`. Samples must postdate target/device/connection configuration;
+after worker recovery they must also be read after that recovery. Correction requires a sample newer
+than the prior successful execution completion. Retained values under COMM_ERROR, BAD, STALE,
+DISABLED, unknown source, missing values and future timestamps cannot authorize writes.
+
+Example: ON/GOOD -> COMM_ERROR -> OFF/GOOD. Nothing is written during COMM_ERROR. Once a fresh
+OFF reading arrives, eligible automation enqueues a **new** ON command through `enqueue_command`.
+The existing processor performs the write and read-back. When the output is ON, there are no further
+commands or repeated success log entries. Numeric comparisons reuse command verification tolerance,
+including type/scale/offset; float rounding must not cause repeated setpoint writes.
+
+Only mismatched targets receive commands. All targets must be usable and the whole batch must be
+free of pending/in-flight commands. Already-matched initial activation records a SUCCESS execution
+with no commands and an `already_desired` snapshot reason. Corrections record the normal execution
+and command links, with actual/desired/revision and `reconciliation` in the snapshot. Physical
+multi-output changes remain sequential, not atomic.
+
+FOR still applies to the input condition. Restart or invalid input resets its observation timer even
+for a consumed edge; target communication loss alone does not pretend the input became false.
+Cooldown remains measured from the last successful command-batch completion. A mismatch during
+cooldown waits for expiry; time-based evaluation ensures it is reconsidered without needing a new
+condition edge. There is no new periodic write schedule and no cooldown reset on every poll.
+
+A FAILED/PARTIAL_FAILURE, CANCELLED/EXPIRED command, interrupted write, or SKIPPED initial execution
+is **not automatically retried by reconciliation**. Its consumed edge and execution history survive
+restart. Inspect the cause and use the existing valid false/true re-arm path. This bounds corrective
+attempts and leaves transient retries/read-back-only retries to the existing command processor.
+Editing/enabling a rule still requires a valid false/true observation: previous-version success does
+not authorize changed actions. No database runtime flags should be manually reset to bypass this.
+
+Manual control is not a new override mode: while a stateful rule remains enabled and qualified,
+a fresh manually changed output can be corrected back to the rule's desired value after its command
+finishes. Disable the relevant automation rules before manual maintenance. No automatic manual-hold
+feature is introduced by this fix. A false condition ends ownership; the engine does not latch a
+desired value through a range where no rule is currently true.
 
 ## Physical safety
 
@@ -97,11 +152,12 @@ updates are unchanged. No new broker or realtime protocol is introduced.
 
 The worker refreshes rule configuration using WORKER_CONFIG_REFRESH_SECONDS. Each evaluation reads
 only referenced current values, tracks their revisions and skips unchanged rules unless FOR/cooldown
-requires another time check. Configuration changes are version-checked again under the rule lock.
+requires another time check. Action target revisions/freshness are also observed; changes evaluate
+their owning rules and competing rules sharing outputs. Unrelated rules remain skipped. Configuration changes are version-checked again under the rule lock.
 
 ## Verification
 
-`python -m pytest tests/test_automation.py` covers validation, edge state, quality, ALL/ANY, operators,
+`python -m pytest tests/test_automation.py tests/test_automation_reconciliation.py` covers validation, edge state, quality, ALL/ANY, operators,
 FOR, hysteresis, cooldown, priority, multiple actions, simulator verification and restart behavior.
 `python tests/compose_automation_smoke.py` creates a disposable Compose project, uses manual simulator
 commands to set deterministic inputs, checks ON/OFF and multi-condition rules, history/WebSocket,

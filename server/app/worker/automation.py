@@ -26,7 +26,9 @@ from app.models import (
 from app.schemas.telemetry import utc
 from app.services.automation import children, value_of
 from app.services.automation_evaluation import advance, compare
-from app.services.commands import TERMINAL, enqueue_command
+from app.services.commands import TERMINAL
+from app.worker.automation_actions import apply_desired_state
+from app.worker.automation_state import TARGET_ERROR
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +42,10 @@ class AutomationEngine:
         self.refresh_at: datetime | None = None
         self.observed: dict[int, tuple] = {}
         self.timed: set[int] = set()
+        self.recovered_at: datetime | None = None
 
     async def recover(self) -> None:
+        self.recovered_at = datetime.now(UTC)
         async with self.database.sessions() as session, session.begin():
             for runtime in await session.scalars(select(AutomationRuntime)):
                 runtime.true_since = None
@@ -118,6 +122,7 @@ class AutomationEngine:
                     seconds=self.settings.worker_config_refresh_seconds
                 )
             ids = {c.tag_id for _, conditions, _ in self.config for c in conditions}
+            ids.update(a.target_tag_id for _, _, actions in self.config for a in actions)
             rows = (
                 (
                     await session.execute(
@@ -155,9 +160,27 @@ class AutomationEngine:
             self.observed = observed
             candidates.update(
                 rule.id
-                for rule, conditions, _ in self.config
+                for rule, conditions, actions in self.config
                 if any(c.tag_id in changed_tags for c in conditions)
+                or any(a.target_tag_id in changed_tags for a in actions)
             )
+        # Include competitors even when only a lower-priority rule's input changed.
+        # Ownership must also be evaluated for already matched higher-priority rules.
+        while True:
+            affected = {
+                a.target_tag_id
+                for r, _, actions in self.config
+                if r.id in candidates
+                for a in actions
+            }
+            competitors = {
+                r.id
+                for r, _, actions in self.config
+                if any(a.target_tag_id in affected for a in actions)
+            }
+            if competitors <= candidates:
+                break
+            candidates.update(competitors)
         reserved: set[int] = set()
         for cached, conditions, actions in self.config:
             if cached.id not in candidates:
@@ -250,72 +273,61 @@ class AutomationEngine:
                         )
                         .limit(1)
                     )
+                    if runtime.error == TARGET_ERROR:
+                        runtime.error = None
+                    previous_trigger = runtime.last_triggered_at
                     fire = advance(rule, runtime, truth, now, bool(pending))
-                    if fire:
-                        event = AutomationExecution(
-                            rule_id=rule.id,
-                            rule_version=rule.updated_at,
-                            triggered_at=now,
-                            snapshot=snapshot,
-                            result="COMMANDS_CREATED",
-                        )
-                        session.add(event)
-                        await session.flush()
-                        targets = {a.target_tag_id for a in actions}
-                        busy = await session.scalar(
-                            select(Command.id)
-                            .where(Command.tag_id.in_(targets), Command.status.not_in(TERMINAL))
-                            .limit(1)
-                        )
-                        if targets & reserved or busy:
-                            event.result, event.error = (
-                                "SKIPPED",
-                                "Target reserved by a higher-priority rule or pending command",
-                            )
-                        else:
-                            try:
-                                async with session.begin_nested():
-                                    rows = (
-                                        await session.execute(
-                                            select(Tag, Device, Connection)
-                                            .join(Device, Device.id == Tag.device_id)
-                                            .join(Connection, Connection.id == Device.connection_id)
-                                            .where(Tag.id.in_(targets))
-                                            .order_by(Tag.id)
-                                            .with_for_update(
-                                                read=True, of=(Tag, Device, Connection)
-                                            )
-                                        )
-                                    ).all()
-                                    target_rows = {r[0].id: r for r in rows}
-                                    for action in actions:
-                                        if action.target_tag_id not in target_rows:
-                                            raise ValueError("Action target no longer exists")
-                                        command = await enqueue_command(
-                                            session,
-                                            *target_rows[action.target_tag_id],
-                                            value_of(action),
-                                            mode=self.settings.source_mode,
-                                            writes_enabled=self.settings.modbus_writes_enabled,
-                                            physical_confirmed=self.settings.modbus_writes_enabled,
-                                            max_age_seconds=self.settings.command_max_age_seconds,
-                                            source="automation",
-                                        )
-                                        session.add(
-                                            AutomationExecutionCommand(
-                                                execution_id=event.id, command_id=command.id
-                                            )
-                                        )
-                                reserved.update(targets)
-                            except ValueError as exc:
-                                event.result, event.error = "FAILED", str(exc)
-                        if event.result != "COMMANDS_CREATED":
-                            event.completed_at = now
-                        runtime.last_result, runtime.error = event.result, event.error
-                        if event.error:
-                            runtime.state = "ERROR"
-                        logger.info(
-                            "Automation execution: rule_id=%s result=%s", rule.id, event.result
+                    last_execution = await session.scalar(
+                        select(AutomationExecution)
+                        .where(AutomationExecution.rule_id == rule.id)
+                        .order_by(AutomationExecution.id.desc())
+                        .limit(1)
+                    )
+                    same_version = bool(
+                        last_execution and utc(last_execution.rule_version) == utc(rule.updated_at)
+                    )
+                    duration_ready = bool(
+                        runtime.true_since
+                        and now
+                        >= utc(runtime.true_since)
+                        + timedelta(milliseconds=rule.for_duration_ms or 0)
+                    )
+                    active = bool(
+                        rule.enabled
+                        and truth is True
+                        and not runtime.armed
+                        and (fire or (same_version and last_execution.result != "SKIPPED"))
+                    )
+                    targets = {a.target_tag_id for a in actions}
+                    conflict = bool(targets & reserved)
+                    # A qualified higher-priority desired state reserves its complete batch,
+                    # including while matched, cooling down, pending or blocked by target quality.
+                    if active and duration_ready and not conflict:
+                        reserved.update(targets)
+                    elif active and not duration_ready:
+                        runtime.state = "WAITING_FOR_DURATION"
+                    correction = bool(
+                        active
+                        and duration_ready
+                        and not pending
+                        and same_version
+                        and last_execution.result == "SUCCESS"
+                        and (not runtime.cooldown_until or now >= utc(runtime.cooldown_until))
+                    )
+                    if fire or correction:
+                        await apply_desired_state(
+                            session,
+                            self.settings,
+                            rule,
+                            runtime,
+                            actions,
+                            snapshot,
+                            now,
+                            initial=fire,
+                            conflict=conflict,
+                            previous_trigger=previous_trigger,
+                            last_execution=last_execution,
+                            not_before=self.recovered_at,
                         )
                 if runtime.state in ("WAITING_FOR_DURATION", "COOLDOWN") or (
                     runtime.armed and runtime.condition_state
