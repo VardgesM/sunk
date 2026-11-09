@@ -23,3 +23,7 @@ backups/
 modbus-monitor-config*.json
 *.key
 *.pem
+
+# Host-specific native Edge startup configuration stays local.
+/deploy/systemd/
+/docs/autostart.md
