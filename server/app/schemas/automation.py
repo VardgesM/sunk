@@ -86,6 +86,11 @@ class RuntimeRead(BaseModel):
 
 
 class RuleRead(RuleInput):
+    # Cloud may retain a rule tombstone after its children are deleted, or receive
+    # the parent before its children. Read it honestly instead of failing the
+    # whole list. RuleInput still requires both lists for every mutation.
+    conditions: Annotated[list[ConditionInput], Field(max_length=100)]
+    actions: Annotated[list[ActionInput], Field(max_length=100)]
     id: int
     created_at: datetime
     updated_at: datetime

@@ -158,6 +158,12 @@ time. The Automation page refreshes rule status every three seconds and provides
 delete confirmation and execution history with command links. Existing command/current-value WebSocket
 updates are unchanged. No new broker or realtime protocol is introduced.
 
+Cloud can temporarily receive a rule before its child metadata, or retain a disabled
+rule after Edge deletion to preserve execution history. Such read responses may contain
+empty `conditions`/`actions`; they are returned as stored rather than failing the entire
+list or inventing configuration. Create/PATCH still require at least one condition and
+action, and Cloud configuration remains read-only. This does not change worker evaluation.
+
 The worker refreshes rule configuration using WORKER_CONFIG_REFRESH_SECONDS. Each evaluation reads
 only referenced current values, tracks their revisions and skips unchanged rules unless FOR/cooldown
 requires another time check. Action target revisions/freshness are also observed; changes evaluate
