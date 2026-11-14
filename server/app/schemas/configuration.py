@@ -272,6 +272,7 @@ class Record(BaseModel):
     id: int
     created_at: datetime
     updated_at: datetime
+    archived_at: datetime | None = None
 
     @field_serializer("created_at", "updated_at")
     def utc_timestamp(self, value: datetime) -> str:

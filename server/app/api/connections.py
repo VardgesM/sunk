@@ -22,12 +22,15 @@ Session = Annotated[AsyncSession, Depends(get_session)]
 @router.get("", response_model=list[ConnectionRead])
 async def list_connections(
     session: Session,
+    archived: bool = False,
     protocol: Protocol | None = None,
     enabled: bool | None = None,
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0, le=2147483647),
 ) -> list[Connection]:
-    statement = select(Connection)
+    statement = select(Connection).where(
+        Connection.archived_at.is_not(None) if archived else Connection.archived_at.is_(None)
+    )
     if protocol is not None:
         statement = statement.where(Connection.protocol == protocol)
     if enabled is not None:
@@ -65,5 +68,5 @@ async def update_connection(
 async def delete_connection(
     identifier: Annotated[int, Path(ge=1, le=2147483647)], session: Session
 ) -> Response:
-    await remove(session, await get_record(session, Connection, identifier, lock=True))
+    await remove(session, Connection, identifier)
     return Response(status_code=204)

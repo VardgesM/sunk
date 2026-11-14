@@ -23,7 +23,7 @@ function locationPath(row: Location, rows: Location[]): string {
 export default function LocationsPage() {
   const [revision, setRevision] = useState(0);
   const locations = useOptions(locationsApi, revision);
-  return <ManagementPage title="Locations" api={locationsApi} onChanged={() => setRevision((value) => value + 1)}
+  return <ManagementPage title="Locations" deletionHelp="This location will be removed. Its child locations and devices move to its parent, or to the root/no location. Devices keep polling and no rules or telemetry are deleted." api={locationsApi} onChanged={() => setRevision((value) => value + 1)}
     mobile={(row, actions) => <MobileDataCard name={row.name} actions={actions}
       details={<DetailFields fields={[
         ['Hierarchy', locationPath(row, locations.rows)], ['Sort order', row.sort_order],

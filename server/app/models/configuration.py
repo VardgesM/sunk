@@ -6,17 +6,19 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
-    UniqueConstraint,
     false,
     func,
+    text,
     true,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+from app.models.archive import Archivable
 
 
 class Timestamps:
@@ -31,7 +33,7 @@ class Timestamps:
     )
 
 
-class Location(Timestamps, Base):
+class Location(Archivable, Timestamps, Base):
     __tablename__ = "locations"
     __table_args__ = (
         CheckConstraint("length(trim(name)) > 0", name="name_not_blank"),
@@ -48,9 +50,10 @@ class Location(Timestamps, Base):
     sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
 
-class Connection(Timestamps, Base):
+class Connection(Archivable, Timestamps, Base):
     __tablename__ = "connections"
     __table_args__ = (
+        CheckConstraint("archived_at IS NULL OR NOT enabled", name="archived_disabled"),
         CheckConstraint("length(trim(name)) > 0", name="name_not_blank"),
         CheckConstraint("protocol IN ('modbus_rtu', 'modbus_tcp')", name="protocol"),
         CheckConstraint("timeout_ms > 0", name="timeout_positive"),
@@ -104,12 +107,14 @@ class Connection(Timestamps, Base):
     timeout_ms: Mapped[int] = mapped_column(default=1000, server_default="1000")
 
 
-class Device(Timestamps, Base):
+class Device(Archivable, Timestamps, Base):
     __tablename__ = "devices"
     __table_args__ = (
         CheckConstraint("length(trim(name)) > 0", name="name_not_blank"),
         CheckConstraint("slave_id BETWEEN 1 AND 247", name="slave_id"),
-        UniqueConstraint("connection_id", "slave_id", name="uq_devices_connection_slave"),
+        CheckConstraint("archived_at IS NULL OR NOT enabled", name="archived_disabled"),
+        Index("uq_devices_connection_slave", "connection_id", "slave_id", unique=True,
+              postgresql_where=text("archived_at IS NULL"), sqlite_where=text("archived_at IS NULL")),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -132,9 +137,12 @@ class Device(Timestamps, Base):
         return self.connection.protocol
 
 
-class Tag(Timestamps, Base):
+class Tag(Archivable, Timestamps, Base):
     __tablename__ = "tags"
     __table_args__ = (
+        CheckConstraint("archived_at IS NULL OR NOT enabled", name="archived_disabled"),
+        Index("uq_tags_key", "key", unique=True,
+              postgresql_where=text("archived_at IS NULL"), sqlite_where=text("archived_at IS NULL")),
         CheckConstraint(
             "history_mode IN ('every_sample','fixed_interval','on_change')", name="history_mode"
         ),
@@ -206,7 +214,7 @@ class Tag(Timestamps, Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(200), index=True)
-    key: Mapped[str] = mapped_column(String(64), unique=True)
+    key: Mapped[str] = mapped_column(String(64))
     device_id: Mapped[int] = mapped_column(
         ForeignKey("devices.id", ondelete="RESTRICT"),
         index=True,

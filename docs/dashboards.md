@@ -6,7 +6,8 @@ Dashboard definitions are PostgreSQL configuration, never source-code sensor exa
 
 - `dashboards`: name, slug (unique), description, is_default, revision and UTC timestamps. A partial unique index permits at most one default; PostgreSQL transaction advisory locking serializes default and layout mutations.
 - `dashboard_widgets`: dashboard FK, type, title, validated widget-specific JSON configuration, UTC timestamps.
-- `dashboard_widget_tags`: restrictive widget/Tag FKs, composite primary key, ordered bindings. Tag references are relational, never hidden inside JSON. A referenced Tag cannot be deleted (409); remove/change the binding first.
+- `dashboard_widget_tags`: restrictive widget/Tag FKs, composite primary key, ordered bindings. Tag references are relational, never hidden inside JSON. Tag archival detaches its bindings transactionally. Multi-Tag charts keep remaining bindings;
+widgets without any remaining Tag are removed and the dashboard revision advances.
 - `dashboard_widget_layouts`: widget FK + breakpoint composite key; integer x/y/w/h with database bounds constraints. Layout is not an opaque JSON document.
 
 Routes: GET/POST `/api/dashboards`; GET/PATCH/DELETE `/api/dashboards/{id}`; POST `/api/dashboards/{id}/widgets`; PATCH/DELETE `/api/dashboard-widgets/{id}`. Dashboard GET includes widgets, bindings and all layouts. PATCH validates the complete merged record. JSON settings reject unknown fields, nonfinite values and invalid ranges. Limits: 100 widgets/dashboard, 8 Tags/chart; list APIs paginate (maximum 500/page).

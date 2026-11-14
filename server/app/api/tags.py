@@ -24,6 +24,7 @@ Session = Annotated[AsyncSession, Depends(get_session)]
 @router.get("", response_model=list[TagRead])
 async def list_tags(
     session: Session,
+    archived: bool = False,
     device_id: int | None = Query(None, gt=0, le=2147483647),
     register_type: RegisterType | None = None,
     enabled: bool | None = None,
@@ -31,7 +32,9 @@ async def list_tags(
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0, le=2147483647),
 ) -> list[Tag]:
-    statement = select(Tag)
+    statement = select(Tag).where(
+        Tag.archived_at.is_not(None) if archived else Tag.archived_at.is_(None)
+    )
     if device_id is not None:
         statement = statement.where(Tag.device_id == device_id)
     if register_type is not None:
@@ -103,5 +106,5 @@ async def update_tag(
 async def delete_tag(
     identifier: Annotated[int, Path(ge=1, le=2147483647)], session: Session
 ) -> Response:
-    await remove(session, await get_record(session, Tag, identifier, lock=True))
+    await remove(session, Tag, identifier)
     return Response(status_code=204)

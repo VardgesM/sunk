@@ -85,7 +85,7 @@ def test_release_roundtrip_and_no_secrets(release_files, tmp_path):
 def test_actual_migrations_include_annotated_revision_assignments():
     from pathlib import Path
 
-    assert artifact.migration_head(Path(__file__).resolve().parents[1]) == "0014_backups"
+    assert artifact.migration_head(Path(__file__).resolve().parents[1]) == "0015_configuration_archive"
 
 
 @pytest.mark.parametrize("name", ["server/NUL", "server/aux.py", "server/CON/x", "server/file. "])

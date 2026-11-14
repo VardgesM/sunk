@@ -541,3 +541,9 @@ every selected record. Current batches precede history catch-up. Settings/System
 pending realtime, history, runtime and event counts. See [design, settings, migration 0013
 and exact safe Cloud/Edge upgrade commands](docs/realtime-sync.md). Existing history policies
 remain configurable (e.g. poll 5 seconds, store history 60 seconds). No automatic deployment.
+
+## Configuration deletion
+
+[Safe deletion and retained history](docs/deletion.md): ADMIN deletion retires active configuration and
+its dependencies without erasing history or executing physical commands. Deploy Cloud before Edge
+when applying migration `0015_configuration_archive`; follow the documented backup/update sequence.

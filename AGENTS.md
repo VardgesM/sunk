@@ -28,7 +28,7 @@
 - Keep typed history separate from latest values; policy operates on decoded engineering values.
 - Store value-free quality transitions; never turn a retained failed reading into a successful historical sample.
 - Isolate history write failures with savepoints, bound query results, and perform retention in periodic batches.
-- Tags with retained history cannot be deleted (HTTP 409); do not silently erase historical records.
+- Operational deletion archives configuration identities; never erase retained telemetry, commands, alarm events or automation execution history as a side effect.
 - Only the worker acquires values. The API may maintain quality/staleness but never generate samples.
 - Simulation is development-only and explicitly enabled through environment settings; never depend on tag names.
 - Current values are a single typed row per tag. Preserve previous successful values on communication errors.
@@ -36,7 +36,7 @@
 - Merge snapshots/live events using per-tag revisions; do not regress to an older value.
 - Tag deletion explicitly removes its derived current state in the same transaction; configuration FKs remain restrictive.
 - Store addresses as zero-based protocol offsets. Never automatically interpret vendor 40001 notation.
-- Use restrictive foreign keys. Referenced configuration deletion must return HTTP 409, never cascade.
+- Keep restrictive foreign keys. Archive dependent configuration explicitly in one transaction; stop/cancel future work without changing physical outputs.
 - Validate PATCH against the complete merged record; enforce configuration invariants in schemas and database constraints.
 - Location mutations must prevent cycles, including concurrent reparenting through the API.
 - Use new Alembic revisions; never rewrite an already-applied migration.
@@ -44,7 +44,7 @@
 
 - Automation may only request control actions through the existing persistent command pipeline. Automation must never perform direct Modbus writes.
 - Automation requires fresh GOOD values with matching source provenance. Preserve consumed edges across restarts; restart uncompleted FOR timers.
-- Keep automation configuration relational, log executions and retain linked command history. Rules with execution history cannot be deleted.
+- Keep automation configuration relational, log executions and retain linked command history. Deleted rules are archived with their full execution history.
 - Stateful SET_TAG_VALUE reconciliation uses fresh authoritative output reads and the existing command queue. Never replay failed/uncertain commands or let lower-priority rules fight active higher-priority desired states.
 
 - Alarms report abnormal conditions independently from Automation; they never perform control actions.
@@ -92,3 +92,5 @@
 - Updates are explicitly requested by an ADMIN; deployment runs outside the API without a Docker socket in application containers.
 - Preserve environment/write settings, persistent volumes, encrypted backup and previous release before deployment.
 - Never auto-downgrade migrations or claim rollback success after an unverified database change. Native Edge service lifecycles must not be guessed.
+
+- Configuration archival excludes concurrent command execution; new references cannot target archives. Reused keys/slave IDs always receive new identities.

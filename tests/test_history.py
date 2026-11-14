@@ -194,7 +194,7 @@ async def test_retention_batched_and_tag_deletion(
     tag = await setup_tag(api, history_enabled=True, history_retention_days=1)
     for i in range(5):
         await sample(database_sessions, tag["id"], i)
-    assert (await api.delete(f"/api/tags/{tag['id']}")).status_code == 409
+    assert (await api.delete(f"/api/tags/{tag['id']}")).status_code == 204
     async with database_sessions() as session, session.begin():
         assert await cleanup_batch(session, tag["id"], NOW + timedelta(seconds=3), 2) == 2
     assert len(await rows(database_sessions)) == 3

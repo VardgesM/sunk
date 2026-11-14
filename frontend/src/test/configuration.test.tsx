@@ -7,7 +7,7 @@ import ConnectionsPage from '../pages/ConnectionsPage';
 import DevicesPage from '../pages/DevicesPage';
 import LocationsPage from '../pages/LocationsPage';
 import TagsPage from '../pages/TagsPage';
-import { connectionsApi, devicesApi, locationsApi, tagsApi } from '../api/configuration';
+import { connectionsApi, devicesApi, editable, locationsApi, tagsApi } from '../api/configuration';
 import { ApiError } from '../api/client';
 import type { Connection, Device, Location, Tag } from '../types/configuration';
 
@@ -31,6 +31,24 @@ async function choose(user: ReturnType<typeof userEvent.setup>, label: string, o
 
 describe('configuration management', () => {
   beforeEach(() => { vi.spyOn(liveStore, 'retain').mockReturnValue(() => {}); });
+  it('does not send archive metadata back as writable configuration', () => {
+    expect(editable({ ...tag, archived_at: null })).not.toHaveProperty('archived_at');
+  });
+
+  it('explains tag deletion consequences and removes the row only after confirmation', async () => {
+    vi.spyOn(devicesApi, 'all').mockResolvedValue([device]);
+    const list = vi.spyOn(tagsApi, 'list').mockResolvedValue([tag]);
+    const remove = vi.spyOn(tagsApi, 'remove').mockImplementation(async () => { list.mockResolvedValue([]); });
+    const user = userEvent.setup(); render(<TagsPage />);
+    await user.click(await screen.findByRole('button', { name: 'Delete Test tag' }));
+    const dialog = within(screen.getByRole('dialog'));
+    expect(dialog.getByText(/History and logs remain/)).toBeInTheDocument();
+    expect(dialog.getByText(/Physical outputs are not switched off/)).toBeInTheDocument();
+    expect(remove).not.toHaveBeenCalled();
+    await user.click(dialog.getByRole('button', { name: 'Delete' }));
+    expect(await screen.findByText('No tags configured.')).toBeInTheDocument();
+    expect(remove).toHaveBeenCalledExactlyOnceWith(tag.id);
+  });
   it('switches TCP/RTU fields and persists typed serial configuration', async () => {
     vi.spyOn(connectionsApi, 'list').mockResolvedValue([]);
     const create = vi.spyOn(connectionsApi, 'create').mockResolvedValue(connection);
@@ -79,15 +97,16 @@ describe('configuration management', () => {
     expect(screen.getByLabelText(/^Key/)).toHaveValue('duplicate');
   });
 
-  it('confirms deletion and displays dependency conflicts without removing the row', async () => {
+  it('confirms deletion and displays server failures without removing the row', async () => {
     vi.spyOn(locationsApi, 'list').mockResolvedValue([location]);
     vi.spyOn(locationsApi, 'all').mockResolvedValue([location]);
-    const remove = vi.spyOn(locationsApi, 'remove').mockRejectedValue(new ApiError(409, 'Cannot delete: dependent configuration exists'));
+    const remove = vi.spyOn(locationsApi, 'remove').mockRejectedValue(new ApiError(503, 'Database unavailable'));
     const user = userEvent.setup(); render(<LocationsPage />);
     await user.click(await screen.findByRole('button', { name: 'Delete Parent' }));
     expect(remove).not.toHaveBeenCalled();
+    expect(within(screen.getByRole('dialog')).getByText(/Devices keep polling/)).toBeInTheDocument();
     await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete' }));
-    expect(await screen.findByText('Cannot delete: dependent configuration exists')).toBeInTheDocument();
+    expect(await screen.findByText('Database unavailable')).toBeInTheDocument();
     await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }));
     expect(await screen.findByRole('button', { name: 'Delete Parent' })).toBeInTheDocument();
   });

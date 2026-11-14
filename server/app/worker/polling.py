@@ -10,6 +10,7 @@ from app.core.config import Settings
 from app.db.session import Database
 from app.models import Connection, Device, Tag, TagCurrentValue
 from app.schemas.telemetry import utc
+from app.services.configuration_lock import lock_configuration_lifecycle
 from app.services.current_values import Reading, upsert_current
 from app.worker.grouping import read_groups
 from app.worker.modbus import ModbusSource
@@ -26,6 +27,7 @@ async def load_configuration(session: AsyncSession) -> list[PollTag]:
             select(Tag, Device, Connection)
             .join(Device, Device.id == Tag.device_id)
             .join(Connection, Connection.id == Device.connection_id)
+            .where(Tag.archived_at.is_(None))
         )
     ).all()
     return [
@@ -69,6 +71,7 @@ def transport_config(connection: Connection) -> Transport:
 async def configuration_is_current(
     session: AsyncSession, tag: PollTag, enabled: bool = True
 ) -> bool:
+    await lock_configuration_lifecycle(session)
     statement = (
         select(
             Tag.updated_at,
@@ -79,7 +82,7 @@ async def configuration_is_current(
         .join(Device, Device.id == Tag.device_id)
         .join(Connection, Connection.id == Device.connection_id)
         .where(
-            Tag.id == tag.id,
+            Tag.id == tag.id, Tag.archived_at.is_(None),
         )
         .with_for_update(read=True, of=(Tag, Device, Connection))
     )
@@ -197,7 +200,7 @@ async def poll_loop(
                         tags = await load_configuration(session)
                         await reconcile_disabled(session, tags)
                         connections = [
-                            transport_config(c) for c in await session.scalars(select(Connection))
+                            transport_config(c) for c in await session.scalars(select(Connection).where(Connection.archived_at.is_(None)))
                         ]
                     new_tags = {tag.id: tag for tag in tags if tag.enabled}
                     obsolete = [

@@ -3,30 +3,31 @@ from typing import TypeVar
 from fastapi import HTTPException
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, ValidationError
-from sqlalchemy import delete, select, text
+from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import Base
 from app.models import (
     Connection,
-    ConnectionRuntime,
     Device,
     Location,
     Tag,
-    TagCurrentValue,
-    TagHistory,
 )
-from app.services.current_values import notify_current
+from app.services.configuration_lock import lock_configuration_lifecycle
 
 Model = TypeVar("Model", bound=Base)
 Schema = TypeVar("Schema", bound=BaseModel)
 
 
 async def get_record(
-    session: AsyncSession, model: type[Model], identifier: int, *, lock: bool = False
+    session: AsyncSession, model: type[Model], identifier: int, *, lock: bool = False, include_archived: bool = False
 ) -> Model:
+    if lock:
+        await lock_configuration_lifecycle(session)
     statement = select(model).where(model.id == identifier)
+    if not include_archived:
+        statement = statement.where(model.archived_at.is_(None))
     if lock:
         statement = statement.with_for_update()
     record = await session.scalar(statement)
@@ -48,6 +49,7 @@ def merge_patch(record: Base, patch: BaseModel, schema: type[Schema]) -> Schema:
 
 
 async def lock_locations(session: AsyncSession) -> None:
+    await lock_configuration_lifecycle(session)
     # Serialize infrequent hierarchy mutations, preventing concurrent A->B / B->A edits.
     # Acquire before reading the tree or locking an individual location row.
     if session.get_bind().dialect.name == "postgresql":
@@ -63,7 +65,7 @@ async def validate_parent(
             raise HTTPException(422, "A location cannot be its own ancestor")
         seen.add(parent_id)
         parent = await session.get(Location, parent_id)
-        if parent is None:
+        if parent is None or parent.archived_at is not None:
             raise HTTPException(422, "parent_id references a location that does not exist")
         parent_id = parent.parent_id
 
@@ -71,7 +73,9 @@ async def validate_parent(
 async def require_reference(
     session: AsyncSession, model: type[Base], identifier: int | None, field: str
 ) -> None:
-    if identifier is not None and await session.get(model, identifier) is None:
+    await lock_configuration_lifecycle(session)
+    record = await session.get(model, identifier) if identifier is not None else None
+    if identifier is not None and (record is None or record.archived_at is not None):
         raise HTTPException(
             422, f"{field} references a {model.__name__.lower()} that does not exist"
         )
@@ -102,32 +106,11 @@ async def persist(session: AsyncSession, record: Model) -> Model:
     return record
 
 
-async def remove(session: AsyncSession, record: Base) -> None:
-    if isinstance(record, Connection):
-        await session.execute(
-            delete(ConnectionRuntime).where(ConnectionRuntime.connection_id == record.id)
-        )
-    if isinstance(record, Tag):
-        if await session.scalar(
-            select(TagHistory.id).where(TagHistory.tag_id == record.id).limit(1)
-        ):
-            raise HTTPException(
-                409,
-                "Cannot delete: retained history exists; disable the tag and configure retention",
-            )
-        # Derived latest state is explicitly removed with its tag, never configuration children.
-        await session.execute(delete(TagCurrentValue).where(TagCurrentValue.tag_id == record.id))
-        await notify_current(session, record.id)
-    await session.delete(record)
-    try:
-        await session.commit()
-    except IntegrityError as exc:
-        await session.rollback()
-        if getattr(exc.orig, "sqlstate", None) == "23503" or "FOREIGN KEY constraint failed" in str(
-            exc.orig
-        ):
-            raise HTTPException(409, "Cannot delete: dependent configuration exists") from exc
-        raise
+async def remove(session: AsyncSession, model: type[Model], identifier: int) -> None:
+    from app.services.archive import archive_configuration
+
+    await archive_configuration(session, model, identifier)
+    await session.commit()
 
 
 def apply_values(record: Base, schema: BaseModel) -> None:

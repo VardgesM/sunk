@@ -17,12 +17,14 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
+from app.models.archive import Archivable
 from app.models.configuration import Timestamps
 
 
-class AlarmRule(Timestamps, Base):
+class AlarmRule(Archivable, Timestamps, Base):
     __tablename__ = "alarm_rules"
     __table_args__ = (
+        CheckConstraint("archived_at IS NULL OR NOT enabled", name="archived_disabled"),
         CheckConstraint("length(trim(name)) > 0", name="name"),
         CheckConstraint("operator IN ('>','>=','<','<=','==','!=')", name="operator"),
         CheckConstraint("severity IN ('INFO','WARNING','CRITICAL')", name="severity"),

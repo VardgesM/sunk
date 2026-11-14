@@ -283,3 +283,9 @@ and certificate state. Application API/frontend join the external `web` network 
 aliases; PostgreSQL stays internal. The frontend is non-root nginx serving only static SPA
 files. API trusts forwarding headers only from the gateway IP. Updater deployment and rollback
 change API/frontend only; gateway state is excluded from releases. See [gateway runbook](gateway.md).
+
+## Configuration deletion
+
+[Safe deletion and retained history](deletion.md): ADMIN deletion retires active configuration and
+its dependencies without erasing history or executing physical commands. Deploy Cloud before Edge
+when applying migration `0015_configuration_archive`; follow the documented backup/update sequence.

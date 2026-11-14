@@ -8,11 +8,11 @@ import { shellLayout } from '../layout/tokens';
 import type { CrudApi } from '../api/configuration';
 import type { Entity, Input } from '../types/configuration';
 
-export default function ManagementPage<T extends Entity>({ title, api, columns, mobile, editor, query = '', filters, onChanged }: {
+export default function ManagementPage<T extends Entity>({ title, api, columns, mobile, editor, query = '', filters, onChanged, deletionHelp }: {
   title: string; api: CrudApi<T>; columns: Column<T>[]; query?: string; filters?: ReactNode;
   mobile: (row: T, actions: ReactNode) => ReactNode;
   editor: (row: T | null, save: (value: Input<T>) => Promise<void>, cancel: () => void) => ReactNode;
-  onChanged?: () => void;
+  onChanged?: () => void; deletionHelp?: string;
 }) {
   const [rows, setRows] = useState<T[]>([]);
   const [loading, setLoading] = useState(true);
@@ -73,7 +73,7 @@ export default function ManagementPage<T extends Entity>({ title, api, columns, 
       </Dialog>
       <Dialog open={!!deleting} onClose={() => { if (!busy) setDeleting(undefined); }} fullWidth maxWidth="xs">
         <DialogTitle sx={{ overflowWrap: 'anywhere' }}>Delete {deleting?.name}?</DialogTitle>
-        <DialogContent><DialogContentText>This cannot be undone. Referenced configuration cannot be deleted.</DialogContentText>{deleteError && <Alert severity="error" sx={{ mt: 2 }}>{deleteError}</Alert>}</DialogContent>
+        <DialogContent><DialogContentText>{deletionHelp ?? "Remove from active configuration. Retained history and logs remain archived."}</DialogContentText>{deleteError && <Alert severity="error" sx={{ mt: 2 }}>{deleteError}</Alert>}</DialogContent>
         <DialogActions><Can permission="configure"><Button disabled={busy} onClick={() => setDeleting(undefined)}>Cancel</Button></Can><Can permission="configure"><Button color="error" disabled={busy} onClick={() => {
           if (!deleting) return;
           setBusy(true);

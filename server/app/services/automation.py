@@ -15,6 +15,7 @@ from app.models import (
 )
 from app.schemas.automation import ActionInput, ConditionInput, RuleInput, RuleRead, RuntimeRead
 from app.services.commands import validate_write
+from app.services.configuration_lock import lock_configuration_lifecycle
 
 
 def value_of(row: AutomationCondition | AutomationAction) -> Decimal | bool:
@@ -79,19 +80,21 @@ async def rule_read(session: AsyncSession, rule: AutomationRule) -> RuleRead:
             )
             for a in actions
         ],
+        archived_at=rule.archived_at,
         runtime=RuntimeRead.model_validate(runtime) if runtime else None,
     )
 
 
 async def validate_rule(session: AsyncSession, payload: RuleInput,
                         *, require_enabled: bool = True) -> None:
+    await lock_configuration_lifecycle(session)
     ids = {c.tag_id for c in payload.conditions} | {a.target_tag_id for a in payload.actions}
     rows = (
         await session.execute(
             select(Tag, Device, Connection)
             .join(Device, Device.id == Tag.device_id)
             .join(Connection, Connection.id == Device.connection_id)
-            .where(Tag.id.in_(ids))
+            .where(Tag.id.in_(ids), Tag.archived_at.is_(None))
             .order_by(Tag.id)
             .with_for_update(read=True, of=(Tag, Device, Connection))
         )

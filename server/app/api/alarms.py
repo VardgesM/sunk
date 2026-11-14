@@ -3,8 +3,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request, Response
 from pydantic import ValidationError
-from sqlalchemy import delete, func, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_session
@@ -19,29 +18,31 @@ from app.services.alarms import (
     rule_read,
     validate_rule,
 )
+from app.services.configuration_lock import lock_configuration_lifecycle
 
 router = APIRouter(prefix="/api/alarms", tags=["alarms"])
 Session = Annotated[AsyncSession, Depends(get_session)]
 Identifier = Annotated[int, Path(ge=1, le=2147483647)]
 
 
-async def require_rule(session: AsyncSession, identifier: int) -> AlarmRule:
+async def require_rule(session: AsyncSession, identifier: int, *, include_archived: bool = False) -> AlarmRule:
+    await lock_configuration_lifecycle(session)
     rule = await session.scalar(
         select(AlarmRule).where(AlarmRule.id == identifier).with_for_update()
     )
-    if rule is None:
+    if rule is None or (rule.archived_at is not None and not include_archived):
         raise HTTPException(404, "Alarm rule not found")
     return rule
 
 
 @router.get("/rules", response_model=list[AlarmRead])
 async def rules(
-    session: Session, limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0)
+    session: Session, archived: bool = False, limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0)
 ):
     return [
         rule_read(r)
         for r in await session.scalars(
-            select(AlarmRule).order_by(AlarmRule.id).limit(limit).offset(offset)
+            select(AlarmRule).where(AlarmRule.archived_at.is_not(None) if archived else AlarmRule.archived_at.is_(None)).order_by(AlarmRule.id).limit(limit).offset(offset)
         )
     ]
 
@@ -65,7 +66,7 @@ async def read(identifier: Identifier, session: Session):
 @router.patch("/rules/{identifier}", response_model=AlarmRead)
 async def patch(identifier: Identifier, session: Session, changes: dict = Body(...)):
     rule = await require_rule(session, identifier)
-    old = rule_read(rule).model_dump(exclude={"id", "created_at", "updated_at"})
+    old = rule_read(rule).model_dump(exclude={"id", "created_at", "updated_at", "archived_at"})
     try:
         payload = AlarmInput.model_validate({**old, **changes})
     except ValidationError as exc:
@@ -88,16 +89,9 @@ async def patch(identifier: Identifier, session: Session, changes: dict = Body(.
 
 @router.delete("/rules/{identifier}", status_code=204)
 async def remove(identifier: Identifier, session: Session):
-    rule = await require_rule(session, identifier)
-    if await session.scalar(select(AlarmEvent.id).where(AlarmEvent.rule_id == identifier).limit(1)):
-        raise HTTPException(409, "Rule has retained alarm events; disable it instead")
-    try:
-        await session.execute(delete(AlarmRuntime).where(AlarmRuntime.rule_id == identifier))
-        await session.delete(rule)
-        await session.commit()
-    except IntegrityError:
-        await session.rollback()
-        raise HTTPException(409, "Rule is still referenced") from None
+    from app.services.configuration import remove
+
+    await remove(session, AlarmRule, identifier)
     return Response(status_code=204)
 
 

@@ -506,7 +506,7 @@ async def numeric_tag(edge, **overrides):
     )
 
 
-async def sample(edge, tag_id, value, *, quality="GOOD", now=None):
+async def sample(edge, tag_id, value, *, quality="GOOD", now=None, history_policy=None):
     from decimal import Decimal
 
     now = now or datetime.now(UTC)
@@ -520,6 +520,7 @@ async def sample(edge, tag_id, value, *, quality="GOOD", now=None):
             quality=quality,
             error=None if quality == "GOOD" else "test communication failure",
             now=now,
+            history_policy=history_policy,
         )
 
 
@@ -742,7 +743,9 @@ async def test_migrate_old_backlog_preserves_durable_rows(pair):
     async with engine.begin() as connection:
         await connection.run_sync(lambda c: migrate(c, "0012_edge_cloud", True))
     for value in (10, 11, 12, 13):
-        await sample(edge, tag["id"], value)
+        # Model columns may be newer than this deliberately downgraded schema.
+        # Like the worker, use its already loaded policy rather than querying Tag.
+        await sample(edge, tag["id"], value, history_policy=SimpleNamespace(**tag))
     async with edge.sessions() as session:
         before = (
             await session.execute(
@@ -887,8 +890,9 @@ async def test_unsent_current_delete_is_acknowledged_and_late_insert_ignored(pai
 
     async with cloud.sessions() as session:
         assert await session.scalar(select(func.count()).select_from(TagCurrentValue)) == 0
-    # Snapshot retains the disabled metadata tombstone with no successful value.
-    assert (await cloud.api.get("/api/tags/values")).json()[0]["value_numeric"] is None
+    # Archived metadata remains queryable, but is absent from operational snapshots.
+    assert (await cloud.api.get("/api/tags/values")).json() == []
+    assert (await cloud.api.get("/api/tags?archived=true")).json()[0]["archived_at"]
 
 
 async def test_current_round_robin_prevents_high_frequency_tag_starvation(pair):

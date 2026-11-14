@@ -112,7 +112,8 @@ async def test_runtime_status_freshness_and_deletion(api: AsyncClient, database_
     ] == "DISCONNECTED"
     await api.patch(f"/api/connections/{identifier}", json={"enabled": False})
     assert (await api.get(f"/api/connections/{identifier}/status")).json()["state"] == "DISABLED"
-    assert (await api.delete(f"/api/connections/{identifier}")).status_code == 409
+    assert (await api.delete(f"/api/connections/{identifier}")).status_code == 204
+    assert (await api.get(f"/api/connections/{identifier}/status")).status_code == 404
     assert (await api.delete(f"/api/devices/{device['id']}")).status_code == 204
     assert (await api.delete(f"/api/connections/{identifier}")).status_code == 204
 

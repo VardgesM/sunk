@@ -110,6 +110,7 @@ def current_statement() -> Select[tuple[Tag, TagCurrentValue, bool]]:
         .join(Device, Tag.device_id == Device.id)
         .join(Connection, Device.connection_id == Connection.id)
         .outerjoin(TagCurrentValue, TagCurrentValue.tag_id == Tag.id)
+        .where(Tag.archived_at.is_(None))
     )
 
 

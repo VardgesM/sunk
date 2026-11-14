@@ -21,6 +21,7 @@ from app.models import (
 )
 from app.schemas.telemetry import utc
 from app.services.commands import TERMINAL, command_value, notify_command, validate_write
+from app.services.configuration_lock import lock_configuration_lifecycle
 from app.services.current_values import Reading, upsert_current
 from app.services.encoding import encode_registers, verification_matches
 from app.worker.decoder import decode_registers, register_count
@@ -95,6 +96,7 @@ class CommandProcessor:
     async def recover(self) -> None:
         # Called once after acquiring exclusive worker ownership. A crashed action may have happened.
         async with self.database.sessions() as session, session.begin():
+            await lock_configuration_lifecycle(session)
             ids = list(
                 await session.scalars(
                     select(Command.id).where(Command.status.in_(("EXECUTING", "VERIFYING")))
@@ -115,6 +117,7 @@ class CommandProcessor:
 
     async def claim(self) -> int | None:
         async with self.database.sessions() as session, session.begin():
+            await lock_configuration_lifecycle(session)
             command = await session.scalar(
                 select(Command)
                 .where(Command.status == "QUEUED")
@@ -150,6 +153,7 @@ class CommandProcessor:
                     identifier, "VERIFYING" if sent else "EXECUTING", attempt=attempt
                 )
                 async with self.database.sessions() as session, session.begin():
+                    await lock_configuration_lifecycle(session)
                     if session.get_bind().dialect.name == "postgresql":
                         await session.execute(text("SET LOCAL lock_timeout = '2000ms'"))
                     command = await session.get(Command, identifier)
@@ -354,7 +358,10 @@ class CommandProcessor:
                 await self.transition(identifier, "EXPIRED" if not sent else "FAILED", str(exc))
                 return
             except (ValueError, DecodeError) as exc:
-                await self.transition(identifier, "FAILED", str(exc))
+                detail = str(exc)
+                if sent:
+                    detail += ". Write may have occurred; verification unavailable. Not replayed."
+                await self.transition(identifier, "FAILED", detail)
                 return
             except Exception:
                 logger.exception("Command processing failed: command_id=%s", identifier)

@@ -38,7 +38,8 @@ Equality/inequality and boolean conditions require H=0. Example: >35 with H=2 cl
 Editing any rule (including disabling) explicitly closes its open episode with reason
 `Rule configuration changed` and resets FOR; enabling/revising may create a new episode when
 its condition is satisfied. No notification is sent for configuration closure or normal clearing.
-Rules and Tags referenced by event history cannot be deleted (409); disable them instead.
+Rules and Tags may be [archived](deletion.md) while retaining event history. Open episodes close with
+an explicit configuration-deleted reason, not a claim that the measured condition became normal.
 
 ## APIs and live events
 

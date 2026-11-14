@@ -167,6 +167,9 @@ async def receive_result(session, edge, payload):
 
 
 async def accept_remote(session, settings, action: RemoteAction, installation_id: str):
+    from app.services.configuration_lock import lock_configuration_lifecycle
+
+    await lock_configuration_lifecycle(session)
     if str(action.edge_id) != installation_id:
         raise ValueError("Wrong Edge installation")
     # Caller owns a transaction and singleton sync lease; unique inbox + command request_id is durable.

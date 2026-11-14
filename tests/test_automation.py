@@ -95,7 +95,6 @@ async def test_crud_validation_and_restrictive_delete(api, database_sessions):
         == 30
     )
     assert len((await api.get("/api/automation/rules")).json()) == 1
-    assert (await api.delete(f"/api/tags/{a['id']}")).status_code == 409
     assert (await api.patch(f"/api/automation/rules/{identifier}", json={"enabled": False})).json()[
         "runtime"
     ]["state"] == "DISABLED"
@@ -170,7 +169,8 @@ async def test_simulator_for_edge_hysteresis_restart_and_execution_log(api, data
     await restarted.tick(t + timedelta(seconds=2))
     # The output is already ON: a new condition edge does not redundantly write it.
     assert len(await commands(database_sessions)) == 1
-    assert (await api.delete(f"/api/automation/rules/{identifier}")).status_code == 409
+    assert (await api.delete(f"/api/automation/rules/{identifier}")).status_code == 204
+    assert (await api.get(f"/api/automation/rules/{identifier}/executions")).json()
 
 
 @pytest.mark.parametrize("mode,expected", [("ALL", 0), ("ANY", 1)])

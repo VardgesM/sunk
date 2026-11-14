@@ -19,8 +19,8 @@ The API validates the complete merged PATCH, including references, type compatib
 register type, representability and configured min/max. Disabling a rule remains possible if a target
 was subsequently disabled or made non-writable. Execution revalidates all targets and configuration
 versions. Rule edits/disable invalidate queued automation commands, which fail without writing.
-Rules with retained executions cannot be deleted (409); disable them instead. Referenced Tags also
-cannot be deleted. Configuration remains normalized in PostgreSQL; JSON is limited to runtime
+Rules and referenced Tags can be [archived](deletion.md). Execution history is retained; dependent
+rules are retired as a whole and pending commands are cancelled without switching physical outputs. Configuration remains normalized in PostgreSQL; JSON is limited to runtime
 comparison latches and diagnostic execution snapshots.
 
 ## Quality and source

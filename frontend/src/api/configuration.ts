@@ -35,5 +35,5 @@ export const tagsApi = crud<Tag>('/tags');
 
 export function editable<T extends Entity>(row: T): Input<T> {
   return Object.fromEntries(Object.entries(row).filter(([key]) =>
-    !['id', 'created_at', 'updated_at', 'connection_protocol'].includes(key))) as Input<T>;
+    !['id', 'created_at', 'updated_at', 'connection_protocol', 'archived_at'].includes(key))) as Input<T>;
 }

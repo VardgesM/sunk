@@ -18,6 +18,7 @@ from app.services.commands import (
     serialize_command,
     validate_write,
 )
+from app.services.configuration_lock import lock_configuration_lifecycle
 from app.services.runtime import worker_alive
 
 router = APIRouter(prefix="/api", tags=["commands"])
@@ -29,6 +30,7 @@ Identifier = Annotated[int, Path(ge=1, le=2147483647)]
 async def request_command(
     tag_id: Identifier, payload: CommandCreate, request: Request, session: Session
 ) -> CommandRead:
+    await lock_configuration_lifecycle(session)
     existing = await session.scalar(
         select(Command).where(Command.request_id == str(payload.request_id))
     )

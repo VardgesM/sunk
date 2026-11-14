@@ -5,12 +5,14 @@ from sqlalchemy import JSON, CheckConstraint, DateTime, ForeignKey, Numeric, Str
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
+from app.models.archive import Archivable
 from app.models.configuration import Timestamps
 
 
-class AutomationRule(Timestamps, Base):
+class AutomationRule(Archivable, Timestamps, Base):
     __tablename__ = "automation_rules"
     __table_args__ = (
+        CheckConstraint("archived_at IS NULL OR NOT enabled", name="archived_disabled"),
         CheckConstraint("length(trim(name)) > 0", name="name"),
         CheckConstraint("condition_mode IN ('ALL','ANY')", name="mode"),
         CheckConstraint("for_duration_ms IS NULL OR for_duration_ms >= 0", name="duration"),

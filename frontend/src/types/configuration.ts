@@ -4,7 +4,7 @@ export type DataType = 'bool' | 'uint16' | 'int16' | 'uint32' | 'int32' | 'float
 export type Order = 'big' | 'little';
 export type HistoryMode = 'every_sample' | 'fixed_interval' | 'on_change';
 
-export interface Entity { id: number; name: string; created_at: string; updated_at: string }
+export interface Entity { id: number; name: string; created_at: string; updated_at: string; archived_at?: string | null }
 export interface Location extends Entity {
   parent_id: number | null; description: string | null; sort_order: number;
 }
@@ -29,7 +29,7 @@ export interface Tag extends Entity {
   history_change_threshold: number | null; history_retention_days: number | null;
   enabled: boolean; min_value: number | null; max_value: number | null; description: string | null;
 }
-export type Input<T extends Entity> = Omit<T, 'id' | 'created_at' | 'updated_at' | 'connection_protocol'>;
+export type Input<T extends Entity> = Omit<T, 'id' | 'created_at' | 'updated_at' | 'connection_protocol' | 'archived_at'>;
 export type LocationInput = Input<Location>;
 export type ConnectionInput = Input<Connection>;
 export type DeviceInput = Input<Device>;

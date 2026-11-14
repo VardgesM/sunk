@@ -12,6 +12,7 @@ from app.models import AlarmEvent, AlarmRule, AlarmRuntime, Connection, Device, 
 from app.schemas.telemetry import utc
 from app.services.alarms import clear_event, notify_event, open_event, queue_notification
 from app.services.automation_evaluation import compare
+from app.services.configuration_lock import lock_configuration_lifecycle
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,7 @@ class AlarmEngine:
 
     async def recover(self) -> None:
         async with self.database.sessions() as session, session.begin():
+            await lock_configuration_lifecycle(session)
             await session.execute(update(AlarmRuntime).values(true_since=None))
 
     def valid(self, row, now: datetime) -> bool:
@@ -96,6 +98,7 @@ class AlarmEngine:
                 continue
             try:
                 async with self.database.sessions() as session, session.begin():
+                    await lock_configuration_lifecycle(session)
                     rule = await session.scalar(
                         select(AlarmRule).where(AlarmRule.id == cached.id).with_for_update()
                     )

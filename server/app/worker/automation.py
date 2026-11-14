@@ -27,6 +27,7 @@ from app.schemas.telemetry import utc
 from app.services.automation import children, value_of
 from app.services.automation_evaluation import advance, compare
 from app.services.commands import TERMINAL
+from app.services.configuration_lock import lock_configuration_lifecycle
 from app.worker.automation_actions import apply_desired_state
 from app.worker.automation_state import TARGET_ERROR, usable_value
 
@@ -47,6 +48,7 @@ class AutomationEngine:
     async def recover(self) -> None:
         self.recovered_at = datetime.now(UTC)
         async with self.database.sessions() as session, session.begin():
+            await lock_configuration_lifecycle(session)
             for runtime in await session.scalars(select(AutomationRuntime)):
                 runtime.true_since = None
                 # Keep consumed edges and hysteresis, but do not count unobserved downtime as FOR.
@@ -91,7 +93,9 @@ class AutomationEngine:
             rule = await session.get(AutomationRule, event.rule_id)
             runtime.last_result, runtime.error = event.result, event.error
             changed.add(event.rule_id)
-            if event.result == "SUCCESS":
+            if rule.archived_at is not None:
+                runtime.state = "DISABLED"
+            elif event.result == "SUCCESS":
                 runtime.cooldown_until = event.completed_at + timedelta(
                     milliseconds=rule.cooldown_ms or 0
                 )
@@ -102,12 +106,13 @@ class AutomationEngine:
     async def tick(self, now: datetime | None = None) -> None:
         now = now or datetime.now(UTC)
         async with self.database.sessions() as session, session.begin():
+            await lock_configuration_lifecycle(session)
             candidates = await self.reconcile(session, now)
             candidates.update(self.timed)
             if self.refresh_at is None or now >= self.refresh_at:
                 rules = list(
                     await session.scalars(
-                        select(AutomationRule).order_by(
+                        select(AutomationRule).where(AutomationRule.archived_at.is_(None)).order_by(
                             AutomationRule.priority.desc(), AutomationRule.id
                         )
                     )
@@ -187,6 +192,7 @@ class AutomationEngine:
                 continue
             try:
                 async with self.database.sessions() as session, session.begin():
+                    await lock_configuration_lifecycle(session)
                     rule = await session.scalar(
                         select(AutomationRule)
                         .where(AutomationRule.id == cached.id)

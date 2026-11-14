@@ -121,7 +121,7 @@ async def runtime_loop(
                         ),
                     )
                     connections = list(
-                        await session.scalars(select(Connection).with_for_update(read=True))
+                        await session.scalars(select(Connection).where(Connection.archived_at.is_(None)).with_for_update(read=True))
                     )
                     for connection in connections:
                         entry = manager.entries.get(connection.id) if manager else None
@@ -151,7 +151,8 @@ async def runtime_loop(
                         await upsert_runtime(session, ConnectionRuntime, "connection_id", fields)
                     pending = list(
                         await session.scalars(
-                            select(ConnectionRuntime).where(
+                            select(ConnectionRuntime).join(Connection, Connection.id == ConnectionRuntime.connection_id).where(
+                                Connection.archived_at.is_(None),
                                 ConnectionRuntime.test_id.is_not(None),
                                 (ConnectionRuntime.test_completed_id.is_(None))
                                 | (

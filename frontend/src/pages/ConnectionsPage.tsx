@@ -18,7 +18,7 @@ const initial: ConnectionInput = {
 };
 
 export default function ConnectionsPage() {
-  return <ManagementPage title="Connections" api={connectionsApi}
+  return <ManagementPage title="Connections" deletionHelp="This connection, its devices and all their tags will be removed from active configuration. Dependent rules and dashboard bindings are removed, queued commands cancelled, and open alarms closed with a deletion reason. History and logs remain archived. Physical outputs are not switched off." api={connectionsApi}
     mobile={(row, actions) => <MobileDataCard name={row.name} status={<StatusBadge label={row.enabled ? 'Enabled' : 'Disabled'} />} actions={actions}
       details={<>
         <DetailFields fields={row.protocol === 'modbus_tcp' ? [['Timeout', `${row.timeout_ms} ms`]] : [

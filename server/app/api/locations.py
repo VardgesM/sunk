@@ -24,12 +24,15 @@ Session = Annotated[AsyncSession, Depends(get_session)]
 @router.get("", response_model=list[LocationRead])
 async def list_locations(
     session: Session,
+    archived: bool = False,
     parent_id: int | None = Query(None, gt=0, le=2147483647),
     roots_only: bool = False,
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0, le=2147483647),
 ) -> list[Location]:
-    statement = select(Location)
+    statement = select(Location).where(
+        Location.archived_at.is_not(None) if archived else Location.archived_at.is_(None)
+    )
     if parent_id is not None:
         statement = statement.where(Location.parent_id == parent_id)
     if roots_only:
@@ -72,6 +75,5 @@ async def update_location(
 async def delete_location(
     identifier: Annotated[int, Path(ge=1, le=2147483647)], session: Session
 ) -> Response:
-    await lock_locations(session)
-    await remove(session, await get_record(session, Location, identifier, lock=True))
+    await remove(session, Location, identifier)
     return Response(status_code=204)

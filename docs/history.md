@@ -55,8 +55,8 @@ It pages tag policies and deletes at most 5000 rows per transaction, up to 20 ba
 Large backlogs expire over subsequent passes. Cleanup logs nonzero counts, logs/retries failures, and
 runs independently of acquisition. In-flight configuration changes take effect on the next scan.
 
-Tags with retained history cannot be deleted (409). This protects historical data; configuration FKs
-remain restrictive. No implicit purge, cascade, or archive subsystem is added.
+Tags with retained history can be removed from active configuration through [archival](deletion.md).
+History remains attached to its original identity and retention policy; configuration FKs stay restrictive.
 
 ## Query API
 

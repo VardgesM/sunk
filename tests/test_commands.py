@@ -133,7 +133,7 @@ async def test_simulator_command_success_current_history_and_events(
     await listener.dispatch()
     event = queue.get_nowait()
     assert event["type"] == "command_status" and event["data"]["status"] == "SUCCESS"
-    assert (await api.delete(f"/api/tags/{tag['id']}")).status_code == 409
+    assert (await api.delete(f"/api/tags/{tag['id']}")).status_code == 204
 
 
 @pytest.mark.parametrize(

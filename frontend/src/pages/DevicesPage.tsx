@@ -12,7 +12,7 @@ import type { DeviceInput } from '../types/configuration';
 export default function DevicesPage() {
   const connections = useOptions(connectionsApi);
   const locations = useOptions(locationsApi);
-  return <ManagementPage title="Devices" api={devicesApi}
+  return <ManagementPage title="Devices" deletionHelp="This device and all its tags will be removed from active configuration. Dependent rules and dashboard bindings are removed, queued commands cancelled, and open alarms closed with a deletion reason. History and logs remain archived. Physical outputs are not switched off." api={devicesApi}
     mobile={(row, actions) => <MobileDataCard name={row.name} status={<StatusBadge label={row.enabled ? 'Enabled' : 'Disabled'} />} actions={actions}
       details={<DetailFields fields={[
         ['Protocol', row.connection_protocol === 'modbus_tcp' ? 'Modbus TCP' : 'Modbus RTU'],

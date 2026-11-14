@@ -86,6 +86,7 @@ class RuntimeRead(BaseModel):
 
 
 class RuleRead(RuleInput):
+    archived_at: datetime | None = None
     # Cloud may retain a rule tombstone after its children are deleted, or receive
     # the parent before its children. Read it honestly instead of failing the
     # whole list. RuleInput still requires both lists for every mutation.

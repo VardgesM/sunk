@@ -36,6 +36,7 @@ class AlarmInput(TypedValue):
 
 
 class AlarmRead(AlarmInput):
+    archived_at: datetime | None = None
     id: int
     created_at: datetime
     updated_at: datetime

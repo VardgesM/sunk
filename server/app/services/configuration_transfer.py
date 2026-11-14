@@ -26,6 +26,7 @@ from app.schemas.configuration import ConnectionCreate, DeviceCreate, LocationCr
 from app.schemas.dashboards import DashboardInput, WidgetInput
 from app.services import alarms, automation, dashboards
 from app.services.backup_archive import BackupError
+from app.services.configuration_lock import lock_configuration_lifecycle
 
 ENTITIES = {
     "locations": (Location, LocationCreate),
@@ -49,6 +50,7 @@ REFERENCES = {
 
 
 async def lock_configuration(session: AsyncSession) -> None:
+    await lock_configuration_lifecycle(session)
     if session.bind.dialect.name == "postgresql":
         # Blocks concurrent configuration mutations, not telemetry/current/history tables.
         await session.execute(text("SELECT pg_advisory_xact_lock(927009)"))
@@ -90,7 +92,7 @@ async def export_configuration(session: AsyncSession) -> ConfigurationDocument:
         (r.entity, r.local_id): r.id for r in await session.scalars(select(ConfigurationIdentity))
     }
     rows = {
-        name: list(await session.scalars(select(model).order_by(model.id)))
+        name: list(await session.scalars(select(model).where(model.archived_at.is_(None) if hasattr(model, "archived_at") else True).order_by(model.id)))
         for name, (model, _) in ENTITIES.items()
     }
     for entity, records in rows.items():
@@ -180,7 +182,7 @@ async def import_configuration(
     }.items():
         model = ENTITIES[entity][0]
         for key in keys:
-            existing = set(await session.scalars(select(getattr(model, key))))
+            existing = set(await session.scalars(select(getattr(model, key)).where(model.archived_at.is_(None) if hasattr(model, "archived_at") else True)))
             incoming = [item.values.get(key) for item in groups[entity]]
             if any(not isinstance(value, str) or not value.strip() for value in incoming):
                 raise BackupError(f"Invalid {entity}.{key}; a non-empty string is required")

@@ -30,5 +30,5 @@ async def history(
     start, end = start.astimezone(UTC), end.astimezone(UTC)
     if start >= end or end - start > timedelta(days=366):
         raise HTTPException(422, "History range must be positive and no longer than 366 days")
-    tag = await get_record(session, Tag, identifier)
+    tag = await get_record(session, Tag, identifier, include_archived=True)
     return await query_history(session, tag, start, end, limit, order, max_points)

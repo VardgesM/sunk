@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import AlarmEvent, AlarmRule, NotificationDelivery, Tag, TelegramDestination
 from app.schemas.alarms import AlarmInput, AlarmRead, EventRead
+from app.services.configuration_lock import lock_configuration_lifecycle
 
 ALARM_CHANNEL = "alarm_events_changed"
 
@@ -18,6 +19,7 @@ def rule_read(rule: AlarmRule) -> AlarmRead:
         id=rule.id,
         created_at=rule.created_at,
         updated_at=rule.updated_at,
+        archived_at=rule.archived_at,
     )
 
 
@@ -31,8 +33,9 @@ def fields(payload: AlarmInput) -> dict:
 
 
 async def validate_rule(session: AsyncSession, payload: AlarmInput) -> None:
+    await lock_configuration_lifecycle(session)
     tag = await session.get(Tag, payload.tag_id)
-    if tag is None:
+    if tag is None or tag.archived_at is not None:
         raise HTTPException(422, "Tag does not exist")
     if (tag.data_type == "bool") != (type(payload.value) is bool):
         raise HTTPException(422, "Comparison value must match Tag data type")

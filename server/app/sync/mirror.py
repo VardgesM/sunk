@@ -1,7 +1,7 @@
 """Strict relational mirror with per-installation mappings and monotonic revisions."""
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID, uuid5
 
@@ -26,6 +26,7 @@ from app.models import (
     RemoteRequest,
     SyncMapping,
     SyncReceipt,
+    Tag,
 )
 from app.services.alarms import notify_event
 from app.services.commands import notify_command
@@ -52,6 +53,8 @@ def identity(edge_id: str, entity: str, key: str) -> str:
 
 def values(entity: str, payload: dict) -> dict:
     allowed = {c.name: c for c in columns(entity)}
+    if "archived_at" in allowed and "archived_at" not in payload:
+        payload = {**payload, "archived_at": None}
     if set(payload) != set(allowed):
         raise ValueError("Sync row does not match version 1 schema")
     result = {}
@@ -150,11 +153,14 @@ async def apply_row(
             "automation_rules",
         ):
             # Cloud retains historical references after Edge retention/deletion. Keep a tombstone.
+            changes = {"archived_at": datetime.now(UTC)}
             if "enabled" in target.c:
+                changes["enabled"] = False
+            if mapping.cloud_key:
                 await session.execute(
                     update(target)
                     .where(*[target.c[k] == v for k, v in mapping.cloud_key.items()])
-                    .values(enabled=False)
+                    .values(**changes)
                 )
         else:
             await session.execute(
@@ -176,6 +182,17 @@ async def apply_row(
                 if ref is None or not ref.cloud_key:
                     raise DependencyPending("Referenced metadata not received")
                 data[column.name] = ref.cloud_key[fk.column.name]
+        if entity == "tag_current_values" and await session.scalar(
+            select(Tag.archived_at).where(Tag.id == data["tag_id"])
+        ) is not None:
+            # A delayed current-state lane must not resurrect a retired Tag after
+            # its higher-priority metadata has arrived. History remains independent.
+            await session.execute(delete(target).where(target.c.tag_id == data["tag_id"]))
+            mapping.cloud_key = {"tag_id": data["tag_id"]}
+            mapping.sequence, mapping.original, mapping.deleted = event.sequence, event.payload, True
+            await session.flush()
+            await notify_current(session, data["tag_id"])
+            return
         if entity == "tags":
             data["key"] = event.payload["key"][:42] + "_" + UUID(mapping.id).hex[:20]
         if entity == "dashboards":

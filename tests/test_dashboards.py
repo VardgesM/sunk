@@ -57,7 +57,7 @@ async def test_widget_crud_and_safe_deletion(api, database_sessions):
     )
     assert changed.status_code == 200
     assert changed.json()["configuration"]["decimals"] == 4
-    assert (await api.delete(f"/api/tags/{tag['id']}")).status_code == 409
+    assert (await api.delete(f"/api/tags/{tag['id']}")).status_code == 204
     assert (await api.delete(f"/api/dashboards/{board['id']}")).status_code == 204
     async with database_sessions() as session:
         assert await session.get(Tag, tag["id"]) is not None

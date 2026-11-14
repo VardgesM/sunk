@@ -48,7 +48,7 @@ async def test_crud_and_filters(api):
         "enabled"
     ] is False
     assert len((await api.get("/api/alarms/rules")).json()) == 1
-    assert (await api.delete(f"/api/tags/{tag['id']}")).status_code == 409
+    assert (await api.delete(f"/api/tags/{tag['id']}")).status_code == 204
     assert (await api.delete(f"/api/alarms/rules/{r['id']}")).status_code == 204
     assert (await api.get(f"/api/alarms/rules/{r['id']}")).status_code == 404
     assert (
@@ -120,7 +120,7 @@ async def test_duration_hysteresis_ack_clear_reactivation_outbox(api, database_s
     assert len(await events(api)) == 2
     async with database_sessions() as session:
         assert len(list(await session.scalars(select(NotificationDelivery)))) == 2
-    assert (await api.delete(f"/api/alarms/rules/{r['id']}")).status_code == 409
+    assert (await api.delete(f"/api/alarms/rules/{r['id']}")).status_code == 204
 
 
 @pytest.mark.parametrize("quality", ["BAD", "STALE", "COMM_ERROR", "DISABLED"])

@@ -59,10 +59,10 @@ minimum cannot exceed maximum. `unit` is at most 50 characters.
 
 ## Integrity and deletion
 
-Every foreign key uses `ON DELETE RESTRICT`. A location with children/devices, a connection with
-devices, or a device with tags cannot be deleted. The API returns 409 and the UI preserves the row.
-Explicitly move or delete dependent records first. Missing references on create/update return 422.
-Duplicate tag keys and duplicate connection/slave pairs return 409, backed by database uniqueness.
+Foreign keys remain restrictive. Migration `0015_configuration_archive` makes operational DELETE
+archive configuration and dependencies instead of erasing retained references. See [deletion rules](deletion.md).
+Missing/archived references on create/update return 422. Partial unique indexes enforce active Tag keys
+and connection/slave pairs; duplicate active identifiers still return 409.
 
 The database prevents direct self-parenting. The API also rejects longer location cycles, using a
 transaction-scoped table lock to serialize hierarchy mutations before ancestor traversal. Direct SQL
@@ -98,9 +98,8 @@ become DISABLED without acquisition. Re-enabling awaits a fresh sample. Encoding
 limit edits invalidate existing values until recollected. Never-sampled enabled tags may have no row:
 snapshots return null quality/value and revision 0, shown as "Awaiting value".
 
-Tag deletion explicitly removes its derived latest row in the same transaction, then the tag, and
-publishes an invalidation. This is not cascading child-configuration deletion; existing restrictions
-remain in force. Quality transitions share the same upsert/notification service as telemetry updates.
+Tag archival explicitly removes its derived latest row in the same transaction and publishes an
+invalidation. The retained Tag identity and history remain; snapshots exclude archived Tags. Quality transitions share the same upsert/notification service as telemetry updates.
 
 ## Historical values (Phase 4)
 
@@ -117,9 +116,8 @@ threshold, interval >= poll interval for fixed_interval, and a threshold for num
 These are validated even when history is disabled, so enabling a saved policy cannot activate an
 invalid configuration. Irrelevant interval/threshold values may remain saved but are ignored by policy.
 
-A tag with retained history returns HTTP 409 on deletion; its current row remains intact. Disable it
-and configure retention, or manage deliberate archival/removal through a future feature. No history
-purge API or cascading deletion is introduced. Changing encoding or units does not reinterpret older
+A Tag can be archived even with retained history. Its original ID remains queryable through the history
+API; deletion does not purge samples. The existing retention policy still applies to archived Tags. Changing encoding or units does not reinterpret older
 rows; response metadata describes current configuration. Use a new tag when a measurement's meaning changes.
 
 See [history policy, queries, and retention](history.md).
@@ -167,8 +165,8 @@ return NULL rather than asserting a single origin.
 version, UTC updated_at/last_success/last_error_at and readable last_error. States are CONNECTED,
 DISCONNECTED, CONNECTING, ERROR, DISABLED. Expiring transport-test request/result fields hold a token,
 configuration version, timestamps, success/message/latency; they cannot encode Modbus commands.
-Connection deletion explicitly removes this derived row in the same transaction; devices still block
-configuration deletion with 409. No persistent Device table is needed for derived availability.
+Connection archival retires its Devices/Tags too. The last runtime row may remain for diagnostics,
+but archived Connections are excluded from active APIs and worker transport configuration. No persistent Device table is needed for derived availability.
 
 `worker_runtime` has one checked singleton id, source mode, hostname, UTC heartbeat/discovery times,
 serial_ports JSON and discovery_error. The JSON is derived host discovery, not runtime configuration.
@@ -179,7 +177,7 @@ Downgrade removes these two derived tables and source columns, preserving prior 
 
 `0006_commands` adds `commands` and `worker_runtime.writes_enabled` (default false).
 Command id and unique request UUID identify a durable manual action. A restrictive tag_id FK preserves
-command records on attempted Tag deletion (409). Requested, previous and verified values use paired
+command records when Tags are archived. Requested, previous and verified values use paired
 nullable NUMERIC/BOOLEAN columns with exclusivity constraints; requested has exactly one value.
 PostgreSQL constraints reject nonfinite numbers, invalid statuses/sources/modes, negative attempts,
 nonpositive revisions, SUCCESS without a verified value, and inconsistent terminal/completion times.
@@ -211,7 +209,7 @@ configuration and retained execution records are never silently cascaded away. S
 - alarm_events: retained typed trigger value and metadata snapshot, rule/Tag restrictive FKs,
   ACTIVE/ACKNOWLEDGED/CLEARED state, UTC lifecycle times, close reason and monotonic revision.
   A partial unique index allows at most one open event per rule. Lookup indexes cover Tag/rule,
-  severity/state and activated time. Referenced rules cannot be deleted.
+  severity/state and activated time. Referenced rules can be archived without deleting their events.
 - telegram_destination: checked singleton ID=1 and non-secret chat ID; no bot token in database.
 - notification_deliveries: optional restrictive event FK, frozen destination/message, kind/status,
   attempt count and UTC delivery timestamps; unique (event_id, kind) prevents duplicate activation
@@ -268,3 +266,11 @@ keep NULL and remain durable independent events. Replacements get a fresh sequen
 UUID. `(entity,id)` supports separate queue reads. Migration compacts only old state rows;
 history/Alarm/Command/Automation events retain identifiers and payloads. No change to Tag
 history policy or current/history storage. [Upgrade and ordering semantics](realtime-sync.md).
+
+## Configuration archives (migration 0015)
+
+Locations, Connections, Devices, Tags, Automation rules and Alarm rules have indexed nullable UTC
+`archived_at`. A check constraint on operational entities forbids `enabled=true` when archived.
+`uq_tags_key` and `uq_devices_connection_slave` are now unique partial indexes for unarchived rows.
+Existing Cloud deletion tombstones are backfilled. No history, commands or rule execution records
+are removed by migration. See [deletion, concurrency and Cloud-first upgrade](deletion.md).

@@ -12,9 +12,11 @@ from app.schemas.dashboards import (
     WidgetInput,
     WidgetRead,
 )
+from app.services.configuration_lock import lock_configuration_lifecycle
 
 
 async def lock_configuration(session: AsyncSession) -> None:
+    await lock_configuration_lifecycle(session)
     # Serializes default changes and child edits, including creation of the first dashboard.
     if session.bind.dialect.name == "postgresql":
         await session.execute(text("SELECT pg_advisory_xact_lock(927009)"))
@@ -85,7 +87,7 @@ async def detail(session: AsyncSession, row: Dashboard) -> DashboardDetail:
 async def validate_tags(session: AsyncSession, payload: WidgetInput,
                         *, require_enabled: bool = True) -> None:
     tags = list(
-        await session.scalars(select(Tag).where(Tag.id.in_(payload.tag_ids)).with_for_update())
+        await session.scalars(select(Tag).where(Tag.id.in_(payload.tag_ids), Tag.archived_at.is_(None)).with_for_update())
     )
     if len(tags) != len(payload.tag_ids):
         raise HTTPException(422, "One or more Tags do not exist")

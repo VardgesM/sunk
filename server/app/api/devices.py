@@ -23,13 +23,16 @@ Session = Annotated[AsyncSession, Depends(get_session)]
 @router.get("", response_model=list[DeviceRead])
 async def list_devices(
     session: Session,
+    archived: bool = False,
     connection_id: int | None = Query(None, gt=0, le=2147483647),
     location_id: int | None = Query(None, gt=0, le=2147483647),
     enabled: bool | None = None,
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0, le=2147483647),
 ) -> list[Device]:
-    statement = select(Device)
+    statement = select(Device).where(
+        Device.archived_at.is_not(None) if archived else Device.archived_at.is_(None)
+    )
     if connection_id is not None:
         statement = statement.where(Device.connection_id == connection_id)
     if location_id is not None:
@@ -70,5 +73,5 @@ async def update_device(
 async def delete_device(
     identifier: Annotated[int, Path(ge=1, le=2147483647)], session: Session
 ) -> Response:
-    await remove(session, await get_record(session, Device, identifier, lock=True))
+    await remove(session, Device, identifier)
     return Response(status_code=204)

@@ -87,13 +87,12 @@ async def test_complete_crud_and_dependency_safe_deletion(api: AsyncClient) -> N
         assert response.json()["name"] == "Renamed"
         assert response.json()["updated_at"] >= record["updated_at"]
         assert (await api.get(f"/api/{resource}")).json()
-    for resource, record in [
-        ("locations", location),
-        ("locations", child),
-        ("connections", connection),
-        ("devices", device),
-    ]:
-        assert (await api.delete(f"/api/{resource}/{record['id']}")).status_code == 409
+    # Parent deletion archives dependents; locations instead reparent equipment safely.
+    assert (await api.delete(f"/api/locations/{location['id']}")).status_code == 204
+    assert (await api.get(f"/api/locations/{child['id']}")).json()["parent_id"] is None
+    assert (await api.delete(f"/api/connections/{connection['id']}")).status_code == 204
+    assert (await api.get("/api/devices")).json() == []
+    assert (await api.get("/api/tags")).json() == []
     for resource, record in [
         ("tags", tag),
         ("devices", device),
@@ -213,7 +212,7 @@ async def test_tag_validation_on_create_and_patch(
     values = {
         key: value
         for key, value in tag.items()
-        if key not in ("id", "created_at", "updated_at")
+        if key not in ("id", "created_at", "updated_at", "archived_at")
     }
     values.update(change)
     assert (await api.post("/api/tags", json=values)).status_code == 422
@@ -257,7 +256,7 @@ async def test_unique_keys_and_device_addresses(api: AsyncClient) -> None:
     values = {
         key: value
         for key, value in tag.items()
-        if key not in ("id", "created_at", "updated_at")
+        if key not in ("id", "created_at", "updated_at", "archived_at")
     }
     assert (await api.post("/api/tags", json=values)).status_code == 409
     other = await create(api, "tags", **{**values, "key": "other"})

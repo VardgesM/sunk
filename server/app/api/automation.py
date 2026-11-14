@@ -4,7 +4,6 @@ from typing import Annotated
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Response
 from pydantic import ValidationError
 from sqlalchemy import delete, select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_session
@@ -18,27 +17,30 @@ from app.models import (
 )
 from app.schemas.automation import ExecutionRead, RuleInput, RuleRead
 from app.services.automation import add_children, rule_read, validate_rule
+from app.services.configuration_lock import lock_configuration_lifecycle
 
 router = APIRouter(prefix="/api/automation/rules", tags=["automation"])
 Session = Annotated[AsyncSession, Depends(get_session)]
 Identifier = Annotated[int, Path(ge=1, le=2147483647)]
 
 
-async def require_rule(session: AsyncSession, identifier: int) -> AutomationRule:
+async def require_rule(session: AsyncSession, identifier: int, *, include_archived: bool = False) -> AutomationRule:
+    await lock_configuration_lifecycle(session)
     rule = await session.scalar(
         select(AutomationRule).where(AutomationRule.id == identifier).with_for_update()
     )
-    if rule is None:
+    if rule is None or (rule.archived_at is not None and not include_archived):
         raise HTTPException(404, "Automation rule not found")
     return rule
 
 
 @router.get("", response_model=list[RuleRead])
 async def list_rules(
-    session: Session, limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0)
+    session: Session, archived: bool = False, limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0)
 ):
     rows = await session.scalars(
         select(AutomationRule)
+        .where(AutomationRule.archived_at.is_not(None) if archived else AutomationRule.archived_at.is_(None))
         .order_by(AutomationRule.priority.desc(), AutomationRule.id)
         .limit(limit)
         .offset(offset)
@@ -67,7 +69,7 @@ async def read_rule(identifier: Identifier, session: Session):
 async def patch_rule(identifier: Identifier, session: Session, changes: dict = Body(...)):
     rule = await require_rule(session, identifier)
     old = (await rule_read(session, rule)).model_dump(
-        exclude={"id", "created_at", "updated_at", "runtime"}
+        exclude={"id", "created_at", "updated_at", "runtime", "archived_at"}
     )
     try:
         payload = RuleInput.model_validate({**old, **changes})
@@ -94,19 +96,9 @@ async def patch_rule(identifier: Identifier, session: Session, changes: dict = B
 
 @router.delete("/{identifier}", status_code=204)
 async def delete_rule(identifier: Identifier, session: Session):
-    rule = await require_rule(session, identifier)
-    if await session.scalar(
-        select(AutomationExecution.id).where(AutomationExecution.rule_id == identifier).limit(1)
-    ):
-        raise HTTPException(409, "Rule has retained execution history; disable it instead")
-    try:
-        for cls in (AutomationCondition, AutomationAction, AutomationRuntime):
-            await session.execute(delete(cls).where(cls.rule_id == identifier))
-        await session.delete(rule)
-        await session.commit()
-    except IntegrityError as exc:
-        await session.rollback()
-        raise HTTPException(409, "Rule is referenced") from exc
+    from app.services.configuration import remove
+
+    await remove(session, AutomationRule, identifier)
     return Response(status_code=204)
 
 
@@ -114,7 +106,7 @@ async def delete_rule(identifier: Identifier, session: Session):
 async def executions(
     identifier: Identifier, session: Session, limit: int = Query(50, ge=1, le=200)
 ):
-    await require_rule(session, identifier)
+    await require_rule(session, identifier, include_archived=True)
     rows = list(
         await session.scalars(
             select(AutomationExecution)

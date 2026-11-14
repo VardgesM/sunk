@@ -37,7 +37,7 @@ export default function TagsPage() {
     applied.get('register_type') && `Register: ${applied.get('register_type')}`,
     applied.get('enabled') && (applied.get('enabled') === 'true' ? 'Enabled' : 'Disabled'),
   ].filter((label): label is string => !!label);
-  return <ManagementPage key={query} title="Tags" api={tagsApi} query={query}
+  return <ManagementPage key={query} title="Tags" deletionHelp="This tag will stop polling. Dependent Automation and Alarm rules will be archived, open alarms cleared with a deletion reason, and its dashboard bindings removed. Empty widgets are removed. Queued commands are cancelled. History and logs remain. Physical outputs are not switched off." api={tagsApi} query={query}
     filters={<>
       <LiveConnectionStatus />
       {devices.error && <Alert severity="error" sx={{ mb: 2 }}>Device options could not be loaded: {devices.error}</Alert>}
