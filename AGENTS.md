@@ -94,3 +94,5 @@
 - Never auto-downgrade migrations or claim rollback success after an unverified database change. Native Edge service lifecycles must not be guessed.
 
 - Configuration archival excludes concurrent command execution; new references cannot target archives. Reused keys/slave IDs always receive new identities.
+- Mobile persistent sessions have no time expiry but retain explicit logout, account disable/password-reset revocation and CSRF checks; never persist passwords on Android.
+- Remote configuration is an ADMIN request to the owning Edge, never a direct Cloud mirror mutation. Freeze versions, apply normal CRUD atomically with an idempotency receipt, and sync metadata before reporting success.

@@ -16,6 +16,7 @@ from app.schemas.dashboards import (
     WidgetInput,
     WidgetRead,
 )
+from app.services.configuration_transaction import commit_configuration, rollback_configuration
 from app.services.dashboards import (
     delete_widgets,
     detail,
@@ -34,9 +35,9 @@ Identifier = Annotated[int, Path(ge=1, le=2147483647)]
 
 async def commit(session: AsyncSession) -> None:
     try:
-        await session.commit()
+        await commit_configuration(session)
     except IntegrityError:
-        await session.rollback()
+        await rollback_configuration(session)
         raise HTTPException(
             409, "Dashboard slug already exists or configuration is still referenced"
         ) from None

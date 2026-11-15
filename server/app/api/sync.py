@@ -10,7 +10,15 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_session
-from app.models import Command, EdgeInstallation, RemoteRequest, SyncMapping, SyncOutbox, SyncState
+from app.models import (
+    Command,
+    EdgeInstallation,
+    RemoteRequest,
+    SyncMapping,
+    SyncOutbox,
+    SyncState,
+    User,
+)
 from app.schemas.telemetry import utc
 from app.services.auth import digest
 from app.services.commands import notify_command
@@ -57,6 +65,7 @@ Machine = Annotated[EdgeInstallation, Depends(machine)]
 async def heartbeat(payload: Heartbeat, edge: Machine, session: Session):
     edge.last_seen_at = datetime.now(UTC)
     edge.software_version = payload.software_version
+    edge.capabilities = payload.capabilities
     await expire_remote(session)
     await session.commit()
     return {"version": 1, "edge_id": edge.id}
@@ -108,6 +117,19 @@ async def requests(edge: Machine, session: Session):
     )
     result = []
     for row in rows:
+        if row.kind == "configuration":
+            user = await session.get(User, row.user_id) if row.user_id else None
+            if user is None or not user.enabled or user.role != "ADMIN":
+                if row.status == "PENDING_EDGE":
+                    row.status, row.error = "CANCELLED", "Originating administrator no longer authorized"
+                    row.completed_at = datetime.now(UTC)
+                else:
+                    # It may already have applied. Do not falsely report cancellation or
+                    # redeliver after revocation; accept the durable result if it arrives.
+                    row.error = "Authorization revoked after delivery; execution result unconfirmed"
+                continue
+            if "configuration-v1" not in edge.capabilities:
+                continue
         # Delivered requests remain retryable until the durable Edge inbox/result acknowledges them.
         if row.status == "PENDING_EDGE":
             row.status = "DELIVERED"
@@ -214,6 +236,7 @@ async def status(request: Request, session: Session):
                 else "OFFLINE",
                 "last_seen_at": utc(e.last_seen_at).isoformat() if e.last_seen_at else None,
                 "mode": e.runtime.get("mode", "unknown"),
+                "capabilities": e.capabilities,
             }
             for e in edges
         ],

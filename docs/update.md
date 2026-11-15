@@ -68,6 +68,48 @@ See the [GitHub Releases API](https://docs.github.com/en/rest/releases/releases#
 
 ## Publishing a release
 
+### Tag workflow (recommended)
+
+`.github/workflows/release.yml` publishes stable updater assets when a maintainer pushes a
+`vX.Y.Z` tag to `VardgesM/sunk`. A normal branch push does **not** publish a release or deploy
+anything. Review `MINIMUM_VERSION` in that workflow for each release; the actual application
+version is read from `server/pyproject.toml`, not duplicated in workflow configuration.
+
+Before tagging, commit and push the reviewed source to `main`, including new migrations and
+`docs/releases/X.Y.Z.md`. Then, in that clean backend checkout (PowerShell):
+
+```powershell
+$releaseVersion = python -c "import tomllib; print(tomllib.load(open('server/pyproject.toml','rb'))['project']['version'])"
+if ($LASTEXITCODE -ne 0) { throw 'Cannot read canonical version' }
+git tag -a "v$releaseVersion" -m "Modbus Monitor $releaseVersion"
+if ($LASTEXITCODE -ne 0) { throw 'Tag creation failed; do not replace an existing release tag' }
+git push origin "v$releaseVersion"
+if ($LASTEXITCODE -ne 0) { throw 'Tag push failed' }
+```
+
+The GitHub-hosted workflow verifies the tag/canonical version, membership in `main`, release
+notes and unchanged old migrations. It runs targeted updater/auth/configuration tests against
+an isolated PostgreSQL, builds the frontend, then uses the existing clean-checkout packager
+and updater archive validator. Only after those checks does it upload both assets into a
+draft release and publish it. The job uses GitHub's short-lived `GITHUB_TOKEN` with repository
+contents permission; no VPS/Edge credential, personal token or production database is needed.
+See the [GitHub CLI release documentation](https://cli.github.com/manual/gh_release_create)
+for the draft and verified-tag publication behavior.
+
+Enable GitHub Actions for the repository and permit its release job to write repository
+contents if organization policy restricts it. Follow **Actions -> Publish updater release**;
+after success, confirm the `.tar.gz` and `.json` attachments under **Releases**, then use the
+VPS's existing **System -> Updates -> Check for updates**. No host services are accessed by
+this workflow. Never add generated release archives, an APK or local environment files to Git.
+
+If checks fail, no new published release is made. Fix the cause before retrying. If asset
+upload/publication fails, inspect any remaining **draft** before retrying; the workflow will
+not overwrite an existing release. Never move an already published tag or replace its assets.
+After a source fix use a new patch version. A network-only failure before draft creation can
+be retried from Actions without changing the tag.
+
+### Manual publication alternative
+
 1. Change only the canonical version in `server/pyproject.toml`; review migrations and update
    tests/docs. Do not change old migrations. Reinstall the editable Python package after a bump.
 2. Run backend/frontend regression tests and rehearse on an isolated Cloud database.
@@ -154,8 +196,9 @@ An unclaimed `READY` handoff expires after 15 minutes, so restarting a long-offl
 cannot unexpectedly install an old request. The administrator must request installation again.
 
 Update state is an atomic fsync-backed **filesystem journal**, like backup artifact metadata,
-not a database table. It must survive a failed database migration. No schema migration is
-introduced by this phase; latest revision remains `0014_backups`. Shared state is durable host
+not a database table. It must survive a failed database migration. Updater v1 itself added no
+schema migration; subsequent application releases declare their revision in the release manifest.
+Shared state is durable host
 storage and contains no passphrase. Keep it across container rebuilds. A lock serializes
 preparation and installation. Only one active job is accepted.
 

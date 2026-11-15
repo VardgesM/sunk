@@ -1,0 +1,129 @@
+name: Publish updater release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: updater-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.repository == 'VardgesM/sunk'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: write
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: release_test
+          POSTGRES_PASSWORD: isolated-ci-only
+          POSTGRES_DB: release_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U release_test -d release_test"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      # Minimum supported installed version; application version comes only from pyproject.toml.
+      MINIMUM_VERSION: '0.1.2'
+      APP_MODE: standalone
+      MODBUS_WRITES_ENABLED: 'false'
+      TELEGRAM_ENABLED: 'false'
+      LIVE_UPDATES_ENABLED: 'false'
+      POSTGRES_PASSWORD: isolated-ci-only
+      TEST_DATABASE_URL: postgresql+asyncpg://release_test:isolated-ci-only@127.0.0.1:5432/release_test
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+      - name: Install build and test dependencies
+        run: python -m pip install -e './server[dev]'
+      - name: Validate version, reviewed branch and migration compatibility
+        id: metadata
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python - <<'PY'
+          import os
+          import subprocess
+          import tomllib
+          from pathlib import Path
+          from app.updates.schema import semver
+
+          version = tomllib.loads(Path('server/pyproject.toml').read_text('utf-8'))['project']['version']
+          minimum = os.environ['MINIMUM_VERSION']
+          if os.environ['RELEASE_TAG'] != f'v{version}' or semver(version) <= semver(minimum):
+              raise SystemExit('Tag/canonical version mismatch or invalid minimum version')
+          notes = Path('docs/releases') / f'{version}.md'
+          if not notes.is_file():
+              raise SystemExit('Versioned release notes are required')
+          subprocess.run(['git', 'merge-base', '--is-ancestor', 'HEAD', 'origin/main'], check=True)
+          previous = f'v{minimum}'
+          paths = subprocess.check_output(
+              ['git', 'ls-tree', '-r', '--name-only', previous, '--', 'server/alembic/versions'], text=True,
+          ).splitlines()
+          if not paths:
+              raise SystemExit('Previous release migration files are required')
+          for name in paths:
+              old = subprocess.check_output(['git', 'show', f'{previous}:{name}'])
+              if old.replace(b'\r\n', b'\n') != Path(name).read_bytes().replace(b'\r\n', b'\n'):
+                  raise SystemExit(f'Previously applied migration changed: {name}')
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
+              output.write(f'version={version}\n')
+          PY
+      - name: Check updater, authentication and remote configuration
+        run: >-
+          python -m pytest -q
+          tests/test_updates.py tests/test_system_info.py tests/test_auth.py
+          tests/test_mobile_configuration.py tests/test_remote_configuration_sync.py
+          tests/test_archive_postgres.py tests/test_migrations.py
+      - name: Verify frontend build
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+      - name: Build clean tracked-source release
+        run: python -m app.release --root . --output "$RUNNER_TEMP/updater-release" --minimum-version "$MINIMUM_VERSION"
+      - name: Validate archive with the updater
+        env:
+          RELEASE_VERSION: ${{ steps.metadata.outputs.version }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from app.updates.artifact import unpack
+          from app.updates.schema import ReleaseManifest
+
+          output = Path(os.environ['RUNNER_TEMP']) / 'updater-release'
+          stem = f"modbus-monitor-{os.environ['RELEASE_VERSION']}"
+          manifest = ReleaseManifest.model_validate_json((output / f'{stem}.json').read_text('utf-8'))
+          unpack(output / f'{stem}.tar.gz', manifest, output / 'validated', os.environ['MINIMUM_VERSION'])
+          print(f'Validated {manifest.version}; migration {manifest.migration_revision}; {len(manifest.files)} files')
+          PY
+      - name: Publish complete stable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_VERSION: ${{ steps.metadata.outputs.version }}
+        run: |
+          gh release create "$RELEASE_TAG" \
+            "$RUNNER_TEMP/updater-release/modbus-monitor-$RELEASE_VERSION.tar.gz" \
+            "$RUNNER_TEMP/updater-release/modbus-monitor-$RELEASE_VERSION.json" \
+            --verify-tag --draft --title "$RELEASE_VERSION" \
+            --notes-file "docs/releases/$RELEASE_VERSION.md"
+          gh release edit "$RELEASE_TAG" --draft=false --latest

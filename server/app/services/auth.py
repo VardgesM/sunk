@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError
 from fastapi import Depends, HTTPException, Request
-from sqlalchemy import delete, event, select, text
+from sqlalchemy import delete, event, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -47,7 +47,8 @@ def me(user: User, mode: str = "standalone") -> Me:
         id=user.id,
         username=user.username,
         role=user.role,
-        permissions=[p for p in PERMISSIONS[user.role] if mode != "cloud" or p != "configure"],
+        permissions=[p for p in PERMISSIONS[user.role] if mode != "cloud" or p != "configure"]
+        + (["remote_configure"] if mode == "cloud" and user.role == "ADMIN" else []),
         application_mode=mode,
     )
 
@@ -68,7 +69,7 @@ async def authenticated(
             .join(AuthSession, AuthSession.user_id == User.id)
             .where(
                 AuthSession.token_hash == digest(token),
-                AuthSession.expires_at > datetime.now(UTC),
+                or_(AuthSession.expires_at.is_(None), AuthSession.expires_at > datetime.now(UTC)),
                 User.enabled,
             )
         )
@@ -90,6 +91,8 @@ def origin_check(request: Request) -> None:
 
 
 def required_permission(method: str, path: str) -> str:
+    if path.startswith("/api/sync/configuration"):
+        return "configure"
     if path.startswith(("/api/system/backups", "/api/system/restores", "/api/system/configuration", "/api/system/updates")):
         return "users"  # ADMIN only, including downloads and previews.
     if (
@@ -132,7 +135,8 @@ async def authorize(request: Request, session: AsyncSession = Depends(get_sessio
         path = request.url.path
         allowed = path.startswith(
             ("/api/auth/", "/api/users", "/api/sync/installations",
-             "/api/system/backups", "/api/system/restores", "/api/system/updates")
+             "/api/system/backups", "/api/system/restores", "/api/system/updates",
+             "/api/sync/configuration")
         ) or required_permission(request.method, path) in ("command", "acknowledge")
         if not allowed:
             raise HTTPException(
@@ -202,7 +206,9 @@ def record_mutation(session: Session) -> None:
         session.add(AuditLog(**data))
 
 
-async def start_session(session: AsyncSession, user: User, hours: int) -> tuple[str, str]:
+async def start_session(
+    session: AsyncSession, user: User, hours: int, *, persistent: bool = False
+) -> tuple[str, str]:
     now = datetime.now(UTC)
     await session.execute(delete(AuthSession).where(AuthSession.expires_at <= now))
     # Bound active sessions per account: retain the newest nine, then add this login.
@@ -213,7 +219,8 @@ async def start_session(session: AsyncSession, user: User, hours: int) -> tuple[
             .order_by(AuthSession.created_at.desc())
         )
     )
-    for old in rows[9:]:
+    # A later browser login must not silently evict a remembered phone login.
+    for old in [r for r in rows if r.expires_at is not None][9:]:
         await session.delete(old)
     token, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
     session.add(
@@ -222,7 +229,7 @@ async def start_session(session: AsyncSession, user: User, hours: int) -> tuple[
             csrf_hash=digest(csrf),
             user_id=user.id,
             created_at=now,
-            expires_at=now + timedelta(hours=hours),
+            expires_at=None if persistent else now + timedelta(hours=hours),
         )
     )
     return token, csrf

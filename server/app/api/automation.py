@@ -18,6 +18,7 @@ from app.models import (
 from app.schemas.automation import ExecutionRead, RuleInput, RuleRead
 from app.services.automation import add_children, rule_read, validate_rule
 from app.services.configuration_lock import lock_configuration_lifecycle
+from app.services.configuration_transaction import commit_configuration
 
 router = APIRouter(prefix="/api/automation/rules", tags=["automation"])
 Session = Annotated[AsyncSession, Depends(get_session)]
@@ -56,7 +57,7 @@ async def create_rule(payload: RuleInput, session: Session):
     await session.flush()
     add_children(session, rule.id, payload)
     session.add(AutomationRuntime(rule_id=rule.id, state="IDLE" if rule.enabled else "DISABLED"))
-    await session.commit()
+    await commit_configuration(session)
     return await rule_read(session, rule)
 
 
@@ -90,7 +91,7 @@ async def patch_rule(identifier: Identifier, session: Session, changes: dict = B
     runtime.armed = False  # Worker prepares stateful intents only after fresh observations.
     runtime.latches = {}
     runtime.error = None
-    await session.commit()
+    await commit_configuration(session)
     return await rule_read(session, rule)
 
 

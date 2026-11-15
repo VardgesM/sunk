@@ -77,7 +77,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await app.state.database.close()
             logger.info("API stopped")
 
-    from app.api import sync
+    from app.api import remote_configuration, sync
 
     app = FastAPI(title="Modbus Monitor API", version=APP_VERSION, lifespan=lifespan)
     app.include_router(router, dependencies=[Depends(authorize)])
@@ -85,6 +85,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(current_values.router, dependencies=[Depends(authorize)])
     app.include_router(sync.machine_router)
     app.include_router(sync.router, dependencies=[Depends(authorize)])
+    app.include_router(remote_configuration.router, dependencies=[Depends(authorize)])
     app.include_router(auth.router)
     app.include_router(users.router, dependencies=[Depends(authorize)])
     app.include_router(backups.router, dependencies=[Depends(authorize)])

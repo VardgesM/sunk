@@ -55,6 +55,8 @@ def values(entity: str, payload: dict) -> dict:
     allowed = {c.name: c for c in columns(entity)}
     if "archived_at" in allowed and "archived_at" not in payload:
         payload = {**payload, "archived_at": None}
+    if entity == "remote_inbox" and "result" not in payload:
+        payload = {**payload, "result": None}
     if set(payload) != set(allowed):
         raise ValueError("Sync row does not match version 1 schema")
     result = {}

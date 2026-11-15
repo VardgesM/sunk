@@ -26,7 +26,7 @@ async def live(websocket: WebSocket) -> None:
     if not initial:
         await websocket.close(code=4401, reason="Authentication required")
         return
-    expires_at = utc(initial[1].expires_at)
+    expires_at = utc(initial[1].expires_at) if initial[1].expires_at else None
     await websocket.accept()
     hub: LiveHub = websocket.app.state.live_hub
     queue = hub.subscribe()
@@ -42,7 +42,7 @@ async def live(websocket: WebSocket) -> None:
                     "listener_ready": hub.ready,
                     "timestamp": datetime.now(UTC).isoformat(),
                 }
-            if datetime.now(UTC) >= expires_at:
+            if expires_at is not None and datetime.now(UTC) >= expires_at:
                 await websocket.close(code=4401, reason="Session expired")
                 return
             async with asyncio.timeout(10):

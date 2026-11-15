@@ -19,6 +19,7 @@ from app.services.alarms import (
     validate_rule,
 )
 from app.services.configuration_lock import lock_configuration_lifecycle
+from app.services.configuration_transaction import commit_configuration
 
 router = APIRouter(prefix="/api/alarms", tags=["alarms"])
 Session = Annotated[AsyncSession, Depends(get_session)]
@@ -54,7 +55,7 @@ async def create(payload: AlarmInput, session: Session):
     session.add(rule)
     await session.flush()
     session.add(AlarmRuntime(rule_id=rule.id))
-    await session.commit()
+    await commit_configuration(session)
     return rule_read(rule)
 
 
@@ -83,7 +84,7 @@ async def patch(identifier: Identifier, session: Session, changes: dict = Body(.
     rule.updated_at = datetime.now(UTC)
     runtime = await session.get(AlarmRuntime, identifier)
     runtime.true_since = None
-    await session.commit()
+    await commit_configuration(session)
     return rule_read(rule)
 
 

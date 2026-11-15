@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     sync_timeout_seconds: float = Field(default=10, ge=1, le=30)
     sync_backoff_max_seconds: float = Field(default=60, ge=1, le=600)
     remote_command_max_age_seconds: int = Field(default=60, ge=1, le=300)
+    remote_configuration_enabled: bool = True
+    remote_configuration_max_age_seconds: int = Field(default=300, ge=30, le=900)
 
     auth_cookie_secure: bool = False  # Local HTTP development; enable with HTTPS deployment.
     auth_session_hours: int = Field(default=8, ge=1, le=168)

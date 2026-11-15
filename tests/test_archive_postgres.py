@@ -9,10 +9,10 @@ from datetime import UTC, datetime
 import pytest
 from alembic import command
 from alembic.config import Config
-from app.models import AlarmEvent, Command, Device, SyncMapping, Tag, TagHistory
 from sqlalchemy import func, select, text, update
 from sqlalchemy.exc import DBAPIError
 
+from app.models import AlarmEvent, Command, Device, SyncMapping, Tag, TagHistory
 from tests.test_alarms import engine as alarm_engine
 from tests.test_alarms import rule as alarm_rule
 from tests.test_automation import engine as automation_engine
@@ -215,6 +215,6 @@ async def test_downgrade_refuses_reused_identifiers_without_losing_data(pair, re
     async with edge.sessions() as session:
         assert (
             await session.scalar(text("SELECT version_num FROM alembic_version"))
-            == "0015_configuration_archive"
+            == "0016_mobile_remote_configuration"
         )
         assert await session.scalar(select(func.count()).select_from(model)) == 2

@@ -154,6 +154,7 @@ async def receive_result(session, edge, payload):
     if remote.status in ("SUCCESS", "FAILED", "CANCELLED", "EXPIRED"):
         return
     remote.status = payload["status"]
+    remote.result = payload.get("result")
     remote.error = payload["error"]
     if remote.status in ("SUCCESS", "FAILED", "EXPIRED"):
         remote.completed_at = datetime.now(UTC)
@@ -167,6 +168,12 @@ async def receive_result(session, edge, payload):
 
 
 async def accept_remote(session, settings, action: RemoteAction, installation_id: str):
+    if action.kind == "configuration":
+        from app.sync.configuration_apply import apply_configuration
+
+        return await apply_configuration(session, settings, action, installation_id)
+    if action.target_id <= 0:
+        raise ValueError("Invalid remote target")
     from app.services.configuration_lock import lock_configuration_lifecycle
 
     await lock_configuration_lifecycle(session)

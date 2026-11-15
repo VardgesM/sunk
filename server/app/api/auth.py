@@ -36,7 +36,25 @@ def clear_cookies(response: Response, secure: bool) -> None:
         )
 
 
+@router.post("/mobile/remember", status_code=204, dependencies=[Depends(authorize)])
+async def remember_mobile(request: Request, response: Response, session: Session) -> None:
+    """Upgrade a still-valid remembered APK session, preserving revocation and CSRF."""
+    request.state.auth_session.expires_at = None
+    await session.commit()
+    for key in (COOKIE, CSRF_COOKIE):
+        response.set_cookie(
+            key,
+            request.cookies[key],
+            expires=datetime(9999, 12, 31, tzinfo=UTC),
+            path="/",
+            secure=request.app.state.settings.auth_cookie_secure,
+            httponly=key == COOKIE,
+            samesite="strict",
+        )
+
+
 @router.post("/login", response_model=Me)
+@router.post("/mobile/login", response_model=Me)
 async def login(payload: Login, request: Request, response: Response, session: Session) -> Me:
     origin_check(request)
     config = request.app.state.settings
@@ -92,7 +110,10 @@ async def login(payload: Login, request: Request, response: Response, session: S
             hash_password, payload.password.get_secret_value()
         )
     user.last_login_at = now
-    token, csrf = await start_session(session, user, config.auth_session_hours)
+    persistent = request.url.path == "/api/auth/mobile/login"
+    token, csrf = await start_session(
+        session, user, config.auth_session_hours, persistent=persistent
+    )
     session.add(
         AuditLog(
             user_id=user.id,
@@ -108,7 +129,8 @@ async def login(payload: Login, request: Request, response: Response, session: S
         response.set_cookie(
             key,
             value,
-            max_age=config.auth_session_hours * 3600,
+            max_age=None if persistent else config.auth_session_hours * 3600,
+            expires=datetime(9999, 12, 31, tzinfo=UTC) if persistent else None,
             path="/",
             secure=config.auth_cookie_secure,
             httponly=key == COOKIE,

@@ -8,8 +8,9 @@ from typing import Any
 from urllib.parse import urlsplit
 
 import httpx
-from sqlalchemy import Select, case, delete, or_, select, update
+from sqlalchemy import Select, and_, case, delete, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.core.config import Settings
 from app.core.version import APP_VERSION
@@ -75,7 +76,7 @@ class SyncClient:
                 raise ValueError("Unsupported Cloud protocol")
             return data
 
-        await call("POST", "heartbeat", json={"version": 1, "software_version": APP_VERSION})
+        await call("POST", "heartbeat", json={"version": 1, "software_version": APP_VERSION, "capabilities": ["configuration-v1"] if self.settings.remote_configuration_enabled else []})
         requests = await call("GET", "requests")
         for data in requests["requests"]:
             action = RemoteAction.model_validate(data)
@@ -166,8 +167,12 @@ class SyncClient:
 
     @staticmethod
     def ready() -> Select[tuple[SyncOutbox]]:
+        earlier = aliased(SyncOutbox)
+        pending_metadata = select(earlier.id).where(earlier.priority == 0, earlier.id < SyncOutbox.id).exists()
         return select(SyncOutbox).where(
-            or_(SyncOutbox.retry_at.is_(None), SyncOutbox.retry_at <= datetime.now(UTC))
+            or_(SyncOutbox.retry_at.is_(None), SyncOutbox.retry_at <= datetime.now(UTC)),
+            ~and_(SyncOutbox.entity == "remote_inbox",
+                  SyncOutbox.payload["kind"].as_string() == "configuration", pending_metadata),
         )
 
     @staticmethod

@@ -34,14 +34,15 @@ class Heartbeat(BaseModel):
     model_config = ConfigDict(extra="forbid")
     version: Literal[1] = 1
     software_version: str = Field(default=APP_VERSION, max_length=50)
+    capabilities: list[Literal["configuration-v1"]] = Field(default_factory=list, max_length=1)
 
 
 class RemoteAction(BaseModel):
     model_config = ConfigDict(extra="forbid")
     id: UUID
     edge_id: UUID
-    kind: Literal["command", "acknowledge"]
-    target_id: int = Field(gt=0)
+    kind: Literal["command", "acknowledge", "configuration"]
+    target_id: int = Field(ge=0)
     user_id: int = Field(gt=0)
     username: str = Field(min_length=1, max_length=64)
     expires_at: datetime

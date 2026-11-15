@@ -15,6 +15,7 @@ from app.models import (
     Tag,
 )
 from app.services.configuration_lock import lock_configuration_lifecycle
+from app.services.configuration_transaction import commit_configuration, rollback_configuration
 
 Model = TypeVar("Model", bound=Base)
 Schema = TypeVar("Schema", bound=BaseModel)
@@ -84,9 +85,9 @@ async def require_reference(
 async def persist(session: AsyncSession, record: Model) -> Model:
     session.add(record)
     try:
-        await session.commit()
+        await commit_configuration(session)
     except IntegrityError as exc:
-        await session.rollback()
+        await rollback_configuration(session)
         code = getattr(exc.orig, "sqlstate", None)
         # SQLite constraint names are used only by isolated tests; PostgreSQL uses SQLSTATE.
         message = str(exc.orig)
@@ -110,7 +111,7 @@ async def remove(session: AsyncSession, model: type[Model], identifier: int) -> 
     from app.services.archive import archive_configuration
 
     await archive_configuration(session, model, identifier)
-    await session.commit()
+    await commit_configuration(session)
 
 
 def apply_values(record: Base, schema: BaseModel) -> None:

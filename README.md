@@ -547,3 +547,14 @@ remain configurable (e.g. poll 5 seconds, store history 60 seconds). No automati
 [Safe deletion and retained history](docs/deletion.md): ADMIN deletion retires active configuration and
 its dependencies without erasing history or executing physical commands. Deploy Cloud before Edge
 when applying migration `0015_configuration_archive`; follow the documented backup/update sequence.
+
+## Android: remembered login and remote editing
+
+The new Android protocol supports persistent login and ADMIN editing through a
+durable Cloud → Edge configuration queue. Edge remains authoritative; ordinary
+Cloud CRUD stays read-only. See [upgrade order and safety](docs/mobile-remote-editing.md).
+
+Backend [0.1.3 release notes](docs/releases/0.1.3.md) describe migration 0016 and the
+Cloud-first upgrade. After the reviewed source reaches `main`, pushing its matching version
+tag runs the [updater release workflow](docs/update.md#tag-workflow-recommended). It publishes
+the archive and manifest; deployment still requires an explicit action in System -> Updates.

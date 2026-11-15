@@ -46,6 +46,7 @@ class EdgeInstallation(Base):
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     software_version: Mapped[str | None] = mapped_column(String(50))
     runtime: Mapped[dict] = mapped_column(JSON, default=dict)
+    capabilities: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
 
 
 class SyncOutbox(Base):
@@ -102,7 +103,7 @@ class SyncMapping(Base):
 class RemoteRequest(Base):
     __tablename__ = "remote_requests"
     __table_args__ = (
-        CheckConstraint("kind IN ('command','acknowledge')", name="kind"),
+        CheckConstraint("kind IN ('command','acknowledge','configuration')", name="kind"),
         Index("ix_remote_requests_edge_status", "edge_id", "status"),
     )
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
@@ -121,6 +122,7 @@ class RemoteRequest(Base):
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     error: Mapped[str | None] = mapped_column(Text)
+    result: Mapped[dict | None] = mapped_column(JSON)
 
 
 class RemoteInbox(Base):
@@ -135,3 +137,4 @@ class RemoteInbox(Base):
     )
     status: Mapped[str] = mapped_column(String(20))
     error: Mapped[str | None] = mapped_column(Text)
+    result: Mapped[dict | None] = mapped_column(JSON)
